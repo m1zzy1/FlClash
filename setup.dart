@@ -380,7 +380,7 @@ class BuildCommand {
   Future<void> _buildEnvFile(String env, {String? coreSha256}) async {
     final data = {
       'APP_ENV': env,
-      if (coreSha256 != null) 'CORE_SHA256': coreSha256,
+      'CORE_SHA256': ?coreSha256,
     };
     final envFile = File(pathJoin(_current, 'env.json'))..create();
     await envFile.writeAsString(json.encode(data));
@@ -457,6 +457,9 @@ class BuildCommand {
     if (arch == null && target != Target.android) {
       throw 'Invalid arch parameter';
     }
+    if (target == Target.android && arch == null) {
+      throw 'Android requires --arch parameter: arm64, arm, or amd64';
+    }
 
     final corePaths = await Build.buildCore(
       target: target,
@@ -466,7 +469,7 @@ class BuildCommand {
 
     String? coreSha256;
 
-    if (Platform.isWindows) {
+    if (Platform.isWindows && target == Target.windows) {
       coreSha256 = await Build.calcSha256(corePaths.first);
       await Build.buildHelper(target, coreSha256);
     }
