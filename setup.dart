@@ -3,9 +3,24 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:args/command_runner.dart';
-import 'package:crypto/crypto.dart';
-import 'package:path/path.dart';
+String get _current => Directory.current.path;
+
+String pathJoin(String p1, String p2, [String? p3, String? p4, String? p5]) {
+  final sep = Platform.pathSeparator;
+  final buffer = StringBuffer(p1);
+  for (final part in [p2, p3, p4, p5]) {
+    if (part == null) break;
+    if (!buffer.toString().endsWith(sep) && !part.startsWith(sep)) {
+      buffer.write(sep);
+    }
+    buffer.write(part);
+  }
+  return buffer.toString();
+}
+
+String pathBasename(String path) {
+  return path.split(Platform.pathSeparator).last;
+}
 
 enum Target { windows, linux, android, macos }
 
@@ -99,13 +114,13 @@ class Build {
 
   static String get libName => 'libclash';
 
-  static String get outDir => join(current, libName);
+  static String get outDir => pathJoin(_current, libName);
 
-  static String get _coreDir => join(current, 'core');
+  static String get _coreDir => pathJoin(_current, 'core');
 
-  static String get _servicesDir => join(current, 'services', 'helper');
+  static String get _servicesDir => pathJoin(_current, 'services', 'helper');
 
-  static String get distPath => join(current, 'dist');
+  static String get distPath => pathJoin(_current, 'dist');
 
   static String _getCc(BuildItem buildItem) {
     final environment = Platform.environment;
@@ -113,11 +128,11 @@ class Build {
       final ndk = environment['ANDROID_NDK'];
       assert(ndk != null);
       final prebuiltDir = Directory(
-        join(ndk!, 'toolchains', 'llvm', 'prebuilt'),
+        pathJoin(ndk!, 'toolchains', 'llvm', 'prebuilt'),
       );
       final prebuiltDirList = prebuiltDir
           .listSync()
-          .where((file) => !basename(file.path).startsWith('.'))
+          .where((file) => !pathBasename(file.path).startsWith('.'))
           .toList();
       final map = {
         'armeabi-v7a': 'armv7a-linux-androideabi21-clang',
@@ -125,7 +140,7 @@ class Build {
         'x86': 'i686-linux-android21-clang',
         'x86_64': 'x86_64-linux-android21-clang',
       };
-      return join(prebuiltDirList.first.path, 'bin', map[buildItem.archName]);
+      return pathJoin(prebuiltDirList.first.path, 'bin', map[buildItem.archName]);
     }
     return 'gcc';
   }
@@ -164,8 +179,17 @@ class Build {
     if (!await file.exists()) {
       throw 'File not exists';
     }
-    final stream = file.openRead();
-    return sha256.convert(await stream.reduce((a, b) => a + b)).toString();
+    if (Platform.isWindows) {
+      final result = await Process.run('certutil', [
+        '-hashfile',
+        filePath,
+        'SHA256',
+      ]);
+      return result.stdout.toString().split('\n').skip(1).first.trim();
+    } else {
+      final result = await Process.run('sha256sum', [filePath]);
+      return result.stdout.toString().split(' ').first.trim();
+    }
   }
 
   static Future<List<String>> buildCore({
@@ -182,14 +206,14 @@ class Build {
 
     final List<String> corePaths = [];
 
-    final targetOutFilePath = join(outDir, target.name);
+    final targetOutFilePath = pathJoin(outDir, target.name);
     final targetOutFile = File(targetOutFilePath);
     if (await targetOutFile.exists()) {
       await targetOutFile.delete(recursive: true);
       await Directory(targetOutFilePath).create(recursive: true);
     }
     for (final item in items) {
-      final outFilePath = join(targetOutFilePath, item.archName);
+      final outFilePath = pathJoin(targetOutFilePath, item.archName ?? '');
       final file = File(outFilePath);
       if (file.existsSync()) {
         file.deleteSync(recursive: true);
@@ -198,7 +222,7 @@ class Build {
       final fileName = isLib
           ? '$libName${item.target.dynamicLibExtensionName}'
           : '$coreName${item.target.executableExtensionName}';
-      final realOutPath = join(outFilePath, fileName);
+      final realOutPath = pathJoin(outFilePath, fileName);
       corePaths.add(realOutPath);
 
       final Map<String, String> env = {};
@@ -245,8 +269,8 @@ class Build {
     required String outFilePath,
     required String archName,
   }) async {
-    final includesPath = join(targetOutFilePath, 'includes');
-    final realOutPath = join(includesPath, archName);
+    final includesPath = pathJoin(targetOutFilePath, 'includes');
+    final realOutPath = pathJoin(includesPath, archName);
     await Directory(realOutPath).create(recursive: true);
     final targetOutFiles = Directory(outFilePath).listSync();
     final coreFiles = Directory(_coreDir).listSync();
@@ -254,7 +278,7 @@ class Build {
       if (!file.path.endsWith('.h')) {
         continue;
       }
-      final targetFilePath = join(realOutPath, basename(file.path));
+      final targetFilePath = pathJoin(realOutPath, pathBasename(file.path));
       final realFile = File(file.path);
       await realFile.copy(targetFilePath);
       if (coreFiles.contains(file)) {
@@ -271,13 +295,13 @@ class Build {
       name: 'build helper',
       workingDirectory: _servicesDir,
     );
-    final outPath = join(
+    final outPath = pathJoin(
       _servicesDir,
       'target',
       'release',
       'helper${target.executableExtensionName}',
     );
-    final targetPath = join(
+    final targetPath = pathJoin(
       outDir,
       target.name,
       'FlClashHelperService${target.executableExtensionName}',
@@ -290,8 +314,8 @@ class Build {
   }
 
   static Future<void> getDistributor() async {
-    final distributorDir = join(
-      current,
+    final distributorDir = pathJoin(
+      _current,
       'plugins',
       'flutter_distributor',
       'packages',
@@ -333,35 +357,19 @@ class Build {
   }
 }
 
-class BuildCommand extends Command {
+class BuildCommand {
   Target target;
+  String? archArg;
+  String? outArg;
+  String? envArg;
 
-  BuildCommand({required this.target}) {
-    if (target == Target.android || target == Target.linux) {
-      argParser.addOption(
-        'arch',
-        valueHelp: arches.map((e) => e.name).join(','),
-        help: 'The $name build desc',
-      );
-    } else {
-      argParser.addOption('arch', help: 'The $name build archName');
-    }
-    argParser.addOption(
-      'out',
-      valueHelp: [if (target.same) 'app', 'core'].join(','),
-      help: 'The $name build arch',
-    );
-    argParser.addOption(
-      'env',
-      valueHelp: ['pre', 'stable'].join(','),
-      help: 'The $name build env',
-    );
-  }
+  BuildCommand({
+    required this.target,
+    this.archArg,
+    this.outArg,
+    this.envArg,
+  });
 
-  @override
-  String get description => 'build $name application';
-
-  @override
   String get name => target.name;
 
   List<Arch> get arches => Build.buildItems
@@ -374,7 +382,7 @@ class BuildCommand extends Command {
       'APP_ENV': env,
       if (coreSha256 != null) 'CORE_SHA256': coreSha256,
     };
-    final envFile = File(join(current, 'env.json'))..create();
+    final envFile = File(pathJoin(_current, 'env.json'))..create();
     await envFile.writeAsString(json.encode(data));
   }
 
@@ -436,12 +444,11 @@ class BuildCommand extends Command {
     return null;
   }
 
-  @override
   Future<void> run() async {
     final mode = target == Target.android ? Mode.lib : Mode.core;
-    final String out = argResults?['out'] ?? (target.same ? 'app' : 'core');
-    final archName = argResults?['arch'];
-    final env = argResults?['env'] ?? 'pre';
+    final String out = outArg ?? (target.same ? 'app' : 'core');
+    final archName = archArg;
+    final env = envArg ?? 'pre';
     final currentArches = arches
         .where((element) => element.name == archName)
         .toList();
@@ -526,11 +533,42 @@ class BuildCommand extends Command {
   }
 }
 
-Future<void> main(Iterable<String> args) async {
-  final runner = CommandRunner('setup', 'build Application');
-  runner.addCommand(BuildCommand(target: Target.android));
-  runner.addCommand(BuildCommand(target: Target.linux));
-  runner.addCommand(BuildCommand(target: Target.windows));
-  runner.addCommand(BuildCommand(target: Target.macos));
-  runner.run(args);
+Future<void> main(List<String> args) async {
+  if (args.isEmpty) {
+    print('Usage: dart setup.dart <target> [--arch <arch>] [--out <out>] [--env <env>]');
+    print('Targets: android, linux, windows, macos');
+    return;
+  }
+
+  final targetName = args[0];
+  final target = Target.values.firstWhere(
+    (t) => t.name == targetName,
+    orElse: () => throw 'Invalid target: $targetName. Valid: android, linux, windows, macos',
+  );
+
+  String? archValue;
+  String? outValue;
+  String? envValue;
+
+  for (var i = 1; i < args.length; i++) {
+    switch (args[i]) {
+      case '--arch':
+        archValue = args[++i];
+        break;
+      case '--out':
+        outValue = args[++i];
+        break;
+      case '--env':
+        envValue = args[++i];
+        break;
+    }
+  }
+
+  final command = BuildCommand(
+    target: target,
+    archArg: archValue,
+    outArg: outValue,
+    envArg: envValue,
+  );
+  await command.run();
 }
