@@ -506,21 +506,16 @@ class BuildCommand {
         return;
       case Target.android:
         final targetMap = {
-          Arch.arm: 'android-arm',
-          Arch.arm64: 'android-arm64',
-          Arch.amd64: 'android-x64',
+          Arch.arm: 'arm',
+          Arch.arm64: 'arm64',
+          Arch.amd64: 'x86_64',
         };
-        final defaultArches = [Arch.arm, Arch.arm64, Arch.amd64];
-        final defaultTargets = defaultArches
-            .where((element) => arch == null ? true : element == arch)
-            .map((e) => targetMap[e])
-            .toList();
-        _buildDistributor(
-          target: target,
-          targets: 'apk',
-          args:
-              ",split-per-abi --build-target-platform ${defaultTargets.join(",")}",
-          env: env,
+        final archTarget = arch != null ? targetMap[arch] : 'arm64';
+        await Build.exec(
+          name: 'build flutter apk',
+          Build.getExecutable(
+            'flutter build apk --release --split-per-abi --target-platform android-$archTarget --dart-define-from-file=env.json',
+          ),
         );
         return;
       case Target.macos:
