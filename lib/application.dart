@@ -9,6 +9,7 @@ import 'package:fl_clash/manager/hotkey_manager.dart';
 import 'package:fl_clash/manager/manager.dart';
 import 'package:fl_clash/plugins/app.dart';
 import 'package:fl_clash/providers/providers.dart';
+import 'package:fl_clash/services/auth_service.dart';
 import 'package:fl_clash/state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -27,6 +28,8 @@ class Application extends ConsumerStatefulWidget {
 class ApplicationState extends ConsumerState<Application> {
   Timer? _autoUpdateProfilesTaskTimer;
   bool _preHasVpn = false;
+  bool _isAuthChecked = false;
+  bool _isAuthenticated = false;
 
   final _pageTransitionsTheme = const PageTransitionsTheme(
     builders: <TargetPlatform, PageTransitionsBuilder>{
@@ -47,6 +50,7 @@ class ApplicationState extends ConsumerState<Application> {
   @override
   void initState() {
     super.initState();
+    _checkAuth();
     WidgetsBinding.instance.addPostFrameCallback((timeStamp) async {
       final currentContext = globalState.navigatorKey.currentContext;
       if (currentContext != null) {
@@ -58,6 +62,16 @@ class ApplicationState extends ConsumerState<Application> {
       appController.initLink();
       app?.initShortcuts();
     });
+  }
+
+  Future<void> _checkAuth() async {
+    final isAuthed = await authService.tryRestoreSession();
+    if (mounted) {
+      setState(() {
+        _isAuthChecked = true;
+        _isAuthenticated = isAuthed;
+      });
+    }
   }
 
   void _autoUpdateProfilesTask() {
@@ -155,7 +169,13 @@ class ApplicationState extends ConsumerState<Application> {
               primaryColor: themeProps.primaryColor,
             ).toPureBlack(themeProps.pureBlack),
           ),
-          home: child!,
+          home: _isAuthChecked && !_isAuthenticated
+              ? const LoginPage()
+              : child!,
+          routes: {
+            '/login': (_) => const LoginPage(),
+            '/home': (_) => const HomePage(),
+          },
         );
       },
       child: const HomePage(),

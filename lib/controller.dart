@@ -186,7 +186,12 @@ extension InitControllerExt on AppController {
         cancelText: isUser ? null : appLocalizations.noLongerRemind,
       );
       if (res == true) {
-        launchUrl(Uri.parse('https://github.com/$repository/releases/latest'));
+        final downloadUrl = data['download_url'] as String?;
+        if (downloadUrl != null && downloadUrl.isNotEmpty) {
+          launchUrl(Uri.parse(downloadUrl));
+        } else {
+          launchUrl(Uri.parse('https://github.com/$repository/releases/latest'));
+        }
       } else if (!isUser && res == false) {
         _ref
             .read(appSettingProvider.notifier)

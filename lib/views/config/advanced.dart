@@ -4,13 +4,10 @@ import 'package:fl_clash/providers/config.dart';
 import 'package:fl_clash/state.dart';
 import 'package:fl_clash/views/config/dns.dart';
 import 'package:fl_clash/views/config/network.dart';
-import 'package:fl_clash/views/config/scripts.dart';
 import 'package:fl_clash/widgets/list.dart';
 import 'package:fl_clash/widgets/scaffold.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-import 'rules.dart';
 
 class AdvancedConfigView extends StatelessWidget {
   const AdvancedConfigView({super.key});
@@ -64,18 +61,6 @@ class AdvancedConfigView extends StatelessWidget {
           ),
           blur: false,
         ),
-      ),
-      ListItem.open(
-        title: Text(appLocalizations.addedRules),
-        subtitle: Text(appLocalizations.controlGlobalAddedRules),
-        leading: const Icon(Icons.library_books),
-        delegate: OpenDelegate(widget: const AddedRulesView(), blur: false),
-      ),
-      ListItem.open(
-        title: Text(appLocalizations.script),
-        subtitle: Text(appLocalizations.overrideScript),
-        leading: const Icon(Icons.rocket, fontWeight: FontWeight.w900),
-        delegate: OpenDelegate(widget: const ScriptsView(), blur: false),
       ),
     ];
     return BaseScaffold(

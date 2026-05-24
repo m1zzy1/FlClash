@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/controller.dart';
 import 'package:fl_clash/enum/enum.dart';
+import 'package:fl_clash/services/auth_service.dart';
 import 'package:fl_clash/manager/window_manager.dart';
 import 'package:fl_clash/providers/providers.dart';
 import 'package:fl_clash/state.dart';
@@ -207,18 +208,37 @@ class AppSidebarContainer extends ConsumerWidget {
                                 .textTheme
                                 .labelLarge!
                                 .copyWith(color: context.colorScheme.onSurface),
-                            destinations: navigationItems
-                                .map(
-                                  (e) => NavigationRailDestination(
-                                    icon: e.icon,
-                                    label: Text(Intl.message(e.label.name)),
-                                  ),
-                                )
-                                .toList(),
+                            destinations: [
+                              ...navigationItems.map(
+                                (e) => NavigationRailDestination(
+                                  icon: e.icon,
+                                  label: Text(Intl.message(e.label.name)),
+                                ),
+                              ),
+                              NavigationRailDestination(
+                                icon: Icon(Icons.logout, color: context.colorScheme.error),
+                                label: Text('退出', style: TextStyle(color: context.colorScheme.error)),
+                              ),
+                            ],
                             onDestinationSelected: (index) {
-                              appController.toPage(
-                                navigationItems[index].label,
-                              );
+                              if (index < navigationItems.length) {
+                                appController.toPage(
+                                  navigationItems[index].label,
+                                );
+                              } else {
+                                // 退出登录
+                                appController.updateStatus(false).then((_) {
+                                  appController.toPage(PageLabel.dashboard);
+                                  AuthService().logout().then((_) {
+                                    if (context.mounted) {
+                                      Navigator.of(context).pushNamedAndRemoveUntil(
+                                        '/login',
+                                        (_) => false,
+                                      );
+                                    }
+                                  });
+                                });
+                              }
                             },
                             extended: false,
                             selectedIndex: currentIndex,
@@ -231,7 +251,7 @@ class AppSidebarContainer extends ConsumerWidget {
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
                 IconButton(
                   onPressed: () {
                     ref
@@ -241,9 +261,8 @@ class AppSidebarContainer extends ConsumerWidget {
                               state.copyWith(showLabel: !state.showLabel),
                         );
                   },
-                  icon: Icon(
+                  icon: const Icon(
                     Icons.menu,
-                    color: context.colorScheme.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(height: 16),

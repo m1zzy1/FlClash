@@ -190,6 +190,8 @@ class MessageLookup extends MessageLookupByLibrary {
     "creationTime": MessageLookupByLibrary.simpleMessage("作成時間"),
     "cut": MessageLookupByLibrary.simpleMessage("切り取り"),
     "dark": MessageLookupByLibrary.simpleMessage("ダーク"),
+    "shop": MessageLookupByLibrary.simpleMessage("ショップ"),
+    "myProfile": MessageLookupByLibrary.simpleMessage("プロフィール"),
     "dashboard": MessageLookupByLibrary.simpleMessage("ダッシュボード"),
     "dataCollectionContent": MessageLookupByLibrary.simpleMessage(
       "本アプリはFirebase Crashlyticsを使用してクラッシュ情報を収集し、アプリの安定性を向上させます。\n収集されるデータにはデバイス情報とクラッシュ詳細が含まれますが、個人の機密データは含まれません。\n設定でこの機能を無効にすることができます。",

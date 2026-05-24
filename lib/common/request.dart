@@ -7,6 +7,7 @@ import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/controller.dart';
+import 'package:fl_clash/services/api_client.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/state.dart';
@@ -71,20 +72,33 @@ class Request {
     return MemoryImage(data);
   }
 
+  /// 检查更新：通过 V2Board API (需要 subscribe token)
   Future<Map<String, dynamic>?> checkForUpdate() async {
     try {
-      final response = await dio.get(
-        'https://api.github.com/repos/$repository/releases/latest',
-        options: Options(responseType: ResponseType.json),
-      );
+      final baseUrl = apiClient.baseUrl;
+      final token = apiClient.token;
+      if (baseUrl == null || token == null) return null;
+      final sep = baseUrl.endsWith('/') ? '' : '/';
+      final apiPath = apiClient.apiPath;
+      final cleanPath = apiPath.startsWith('/') ? apiPath.substring(1) : apiPath;
+      final url = '$baseUrl$sep$cleanPath/client/app/getVersion?token=$token';
+      final response = await dio.get(url,
+          options: Options(responseType: ResponseType.json));
       if (response.statusCode != 200) return null;
-      final data = response.data as Map<String, dynamic>;
-      final remoteVersion = data['tag_name'];
+      final body = response.data as Map<String, dynamic>?;
+      final v2Data = body?['data'] as Map<String, dynamic>?;
+      if (v2Data == null) return null;
+      final remoteVersion = v2Data['windows_version'] as String?;
+      if (remoteVersion == null) return null;
       final version = globalState.packageInfo.version;
       final hasUpdate =
           utils.compareVersions(remoteVersion.replaceAll('v', ''), version) > 0;
       if (!hasUpdate) return null;
-      return data;
+      return {
+        'tag_name': 'v$remoteVersion',
+        'body': '',
+        'download_url': v2Data['windows_download_url'] ?? '',
+      };
     } catch (e) {
       commonPrint.log('checkForUpdate failed', logLevel: LogLevel.warning);
       return null;

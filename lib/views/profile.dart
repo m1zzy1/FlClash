@@ -1,5 +1,4 @@
-import 'package:collection/collection.dart';
-import 'package:fl_clash/common/request.dart';
+﻿import 'package:fl_clash/common/request.dart';
 import 'package:fl_clash/controller.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/services/api_client.dart';
