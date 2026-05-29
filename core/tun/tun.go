@@ -4,14 +4,15 @@ package tun
 
 import "C"
 import (
+	"net"
+	"net/netip"
+	"strings"
+
 	"github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/listener/sing_tun"
 	"github.com/metacubex/mihomo/log"
 	"github.com/metacubex/mihomo/tunnel"
-	"net"
-	"net/netip"
-	"strings"
 )
 
 func Start(fd int, stack string, address, dns string) *sing_tun.Listener {
@@ -49,7 +50,7 @@ func Start(fd int, stack string, address, dns string) *sing_tun.Listener {
 
 	options := LC.Tun{
 		Enable:              true,
-		Device:              "FlClash",
+		Device:              "Sororain",
 		Stack:               tunStack,
 		DNSHijack:           dnsHijack,
 		AutoRoute:           false,

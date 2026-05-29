@@ -1,12 +1,10 @@
 import 'dart:io';
 
 import 'package:fl_clash/common/common.dart';
-import 'package:fl_clash/controller.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/l10n/l10n.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/providers.dart';
-import 'package:fl_clash/views/about.dart';
 import 'package:fl_clash/views/access.dart';
 import 'package:fl_clash/views/application_setting.dart';
 import 'package:fl_clash/views/config/config.dart';
@@ -18,7 +16,6 @@ import 'package:intl/intl.dart';
 import 'package:path/path.dart' show dirname, join;
 
 import 'config/advanced.dart';
-import 'developer.dart';
 import 'theme.dart';
 
 class ToolsView extends ConsumerStatefulWidget {
@@ -53,17 +50,6 @@ class _ToolViewState extends ConsumerState<ToolsView> {
     );
   }
 
-  List<Widget> _getOtherList(bool enableDeveloperMode) {
-    return generateSection(
-      title: context.appLocalizations.other,
-      items: [
-        _DisclaimerItem(),
-        if (enableDeveloperMode) _DeveloperItem(),
-        _InfoItem(),
-      ],
-    );
-  }
-
   List<Widget> _getSettingList() {
     return generateSection(
       title: context.appLocalizations.settings,
@@ -82,11 +68,6 @@ class _ToolViewState extends ConsumerState<ToolsView> {
 
   @override
   Widget build(BuildContext context) {
-    final vm2 = ref.watch(
-      appSettingProvider.select(
-        (state) => VM2(state.locale, state.developerMode),
-      ),
-    );
     final items = [
       Consumer(
         builder: (_, ref, _) {
@@ -105,7 +86,6 @@ class _ToolViewState extends ConsumerState<ToolsView> {
         },
       ),
       ..._getSettingList(),
-      ..._getOtherList(vm2.b),
     ];
     return CommonScaffold(
       title: context.appLocalizations.tools,
@@ -256,46 +236,4 @@ class _SettingItem extends StatelessWidget {
   }
 }
 
-class _DisclaimerItem extends StatelessWidget {
-  const _DisclaimerItem();
 
-  @override
-  Widget build(BuildContext context) {
-    return ListItem(
-      leading: const Icon(Icons.gavel),
-      title: Text(context.appLocalizations.disclaimer),
-      onTap: () async {
-        final isDisclaimerAccepted = await appController.showDisclaimer();
-        if (!isDisclaimerAccepted) {
-          appController.handleExit();
-        }
-      },
-    );
-  }
-}
-
-class _InfoItem extends StatelessWidget {
-  const _InfoItem();
-
-  @override
-  Widget build(BuildContext context) {
-    return ListItem.open(
-      leading: const Icon(Icons.info),
-      title: Text(context.appLocalizations.about),
-      delegate: OpenDelegate(widget: const AboutView()),
-    );
-  }
-}
-
-class _DeveloperItem extends StatelessWidget {
-  const _DeveloperItem();
-
-  @override
-  Widget build(BuildContext context) {
-    return ListItem.open(
-      leading: const Icon(Icons.developer_board),
-      title: Text(context.appLocalizations.developerMode),
-      delegate: OpenDelegate(widget: const DeveloperView()),
-    );
-  }
-}

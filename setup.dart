@@ -22,6 +22,191 @@ String pathBasename(String path) {
   return path.split(Platform.pathSeparator).last;
 }
 
+// === 配置加载（从 app_config.json）===
+Map<String, dynamic>? _buildConfig;
+
+Future<void> _loadBuildConfig() async {
+  final configFile = File(pathJoin(_current, 'app_config.json'));
+  if (await configFile.exists()) {
+    final jsonStr = await configFile.readAsString();
+    _buildConfig = json.decode(jsonStr) as Map<String, dynamic>;
+    print('Config loaded: ${_buildConfig!['appName']}');
+  } else {
+    _buildConfig = {};
+    print('Warning: app_config.json not found, using defaults');
+  }
+}
+
+String get _appName => _buildConfig?['appName'] as String? ?? 'FlClash';
+String get _coreName => _buildConfig?['coreName'] as String? ?? 'FlClashCore';
+String get _helperName => _buildConfig?['helperName'] as String? ?? 'FlClashHelperService';
+String get _appId => _buildConfig?['appId'] as String? ?? '728B3532-C74B-4870-9068-BE70FE12A3E6';
+String get _packageName => _buildConfig?['packageName'] as String? ?? 'com.follow.clash';
+Map<String, dynamic> get _features => _buildConfig?['features'] as Map<String, dynamic>? ?? {};
+
+Future<void> _syncNames() async {
+  final appName = _appName;
+  final coreName = _coreName;
+  final helperName = _helperName;
+  print('=== Syncing names from app_config.json ===');
+  print('  appName=$appName  coreName=$coreName  helperName=$helperName');
+
+  final tasks = <(String, List<(String, String)>)>[
+    // windows/CMakeLists.txt
+    (pathJoin(_current, 'windows', 'CMakeLists.txt'), [
+      ('project(FlClash LANGUAGES CXX)', 'project($appName LANGUAGES CXX)'),
+      ('set(BINARY_NAME "FlClash")', 'set(BINARY_NAME "$appName")'),
+      ('/FlClashCore.exe"', '/$coreName.exe"'),
+      ('/FlClashHelperService.exe"', '/$helperName.exe"'),
+    ]),
+    // windows/runner/Runner.rc
+    (pathJoin(_current, 'windows', 'runner', 'Runner.rc'), [
+      ('VALUE "FileDescription", "FlClash"', 'VALUE "FileDescription", "$appName"'),
+      ('VALUE "OriginalFilename", "FlClash.exe"', 'VALUE "OriginalFilename", "$appName.exe"'),
+      ('VALUE "ProductName", "clash"', 'VALUE "ProductName", "$appName"'),
+      ('VALUE "InternalName", "clash"', 'VALUE "InternalName", "$appName"'),
+    ]),
+    // windows/runner/main.cpp
+    (pathJoin(_current, 'windows', 'runner', 'main.cpp'), [
+      ('window.Create(L"FlClash"', 'window.Create(L"$appName"'),
+    ]),
+    // make_config.yaml
+    (pathJoin(_current, 'windows', 'packaging', 'exe', 'make_config.yaml'), [
+      ('app_id: 728B3532-C74B-4870-9068-BE70FE12A3E6', 'app_id: $_appId'),
+      ('app_name: FlClash', 'app_name: $appName'),
+      ('display_name: FlClash', 'display_name: $appName'),
+      ('executable_name: FlClash.exe', 'executable_name: $appName.exe'),
+      ('output_base_file_name: FlClash.exe', 'output_base_file_name: $appName.exe'),
+    ]),
+    // distribute_options.yaml
+    (pathJoin(_current, 'distribute_options.yaml'), [
+      ("app_name: 'FlClash'", "app_name: '$appName'"),
+    ]),
+    // inno_setup.iss
+    (pathJoin(_current, 'windows', 'packaging', 'exe', 'inno_setup.iss'), [
+      ("['FlClash.exe', 'FlClashCore.exe', 'FlClashHelperService.exe']",
+       "['$appName.exe', '$coreName.exe', '$helperName.exe']"),
+    ]),
+    // lib/common/path.dart
+    (pathJoin(_current, 'lib', 'common', 'path.dart'), [
+      ("FlClashCore\$executableExtension'", "$coreName\$executableExtension'"),
+      ("'FlClash.lock'", "'\$appName.lock'"),
+    ]),
+    // lib/common/constant.dart
+    (pathJoin(_current, 'lib', 'common', 'constant.dart'), [
+      ("const appName = 'FlClash'", "const appName = '$appName'"),
+      ("'/tmp/FlClashSocket_", "'/tmp/${appName}Socket_"),
+      ("'FlClashMainIsolate'", "'${appName}MainIsolate'"),
+      ("'FlClashServiceIsolate'", "'${appName}ServiceIsolate'"),
+      ("'FlClashHelperService'", "'$helperName'"),
+    ]),
+    // services/helper/src/service/windows.rs
+    (pathJoin(pathJoin(_current, 'services', 'helper', 'src', 'service'), 'windows.rs'), [
+      ('"FlClashHelperService"', '"$helperName"'),
+    ]),
+    // linux/CMakeLists.txt
+    (pathJoin(_current, 'linux', 'CMakeLists.txt'), [
+      ('set(BINARY_NAME "FlClash")', 'set(BINARY_NAME "$appName"'),
+      ('FlClashCore"', '$coreName"'),
+    ]),
+    // linux/runner/my_application.cc
+    (pathJoin(_current, 'linux', 'runner', 'my_application.cc'), [
+      ('gtk_header_bar_set_title(header_bar, "FlClash")',
+       'gtk_header_bar_set_title(header_bar, "$appName")'),
+      ('gtk_window_set_title(window, "FlClash")',
+       'gtk_window_set_title(window, "$appName")'),
+    ]),
+    // macos/Runner/Info.plist
+    (pathJoin(_current, 'macos', 'Runner', 'Info.plist'), [
+      ('<key>CFBundleExecutable</key>\n\t<string>FlClash</string>',
+       '<key>CFBundleExecutable</key>\n\t<string>$appName</string>'),
+      ('<key>CFBundleName</key>\n\t<string>FlClash</string>',
+       '<key>CFBundleName</key>\n\t<string>$appName</string>'),
+    ]),
+    // lib/common/window.dart
+    (pathJoin(_current, 'lib', 'common', 'window.dart'), [
+      ("protocol.register('flclash')", "protocol.register('${appName.toLowerCase()}')"),
+    ]),
+    // core/tun/tun.go
+    (pathJoin(_current, 'core', 'tun', 'tun.go'), [
+      ('Device:              "FlClash"', 'Device:              "$appName"'),
+    ]),
+    // android/app/build.gradle.kts
+    (pathJoin(_current, 'android', 'app', 'build.gradle.kts'), [
+      ('applicationId = "com.follow.clash"', 'applicationId = "$_packageName"'),
+    ]),
+    // android/app/src/main/AndroidManifest.xml
+    (pathJoin(pathJoin(_current, 'android', 'app', 'src', 'main'), 'AndroidManifest.xml'), [
+      ('android:label="FlClash"', 'android:label="$appName"'),
+    ]),
+    // android/app/src/debug/AndroidManifest.xml
+    (pathJoin(pathJoin(_current, 'android', 'app', 'src', 'debug'), 'AndroidManifest.xml'), [
+      ('android:label="FlClash Debug"', 'android:label="$appName Debug"'),
+    ]),
+    // android/common/src/main/java/.../GlobalState.kt
+    (pathJoin(pathJoin(pathJoin(_current, 'android', 'common', 'src', 'main'), 'java', 'com', 'follow', 'clash'), 'common', 'GlobalState.kt'), [
+      ('NOTIFICATION_CHANNEL = "FlClash"', 'NOTIFICATION_CHANNEL = "$appName"'),
+    ]),
+    // android/service/src/main/java/.../VpnService.kt
+    (pathJoin(pathJoin(pathJoin(_current, 'android', 'service', 'src', 'main'), 'java', 'com', 'follow', 'clash'), 'service', 'VpnService.kt'), [
+      ('setSession("FlClash")', 'setSession("$appName")'),
+    ]),
+    // android/service/src/main/java/.../NotificationModule.kt
+    (pathJoin(pathJoin(pathJoin(_current, 'android', 'service', 'src', 'main'), 'java', 'com', 'follow', 'clash'), 'service', 'modules', 'NotificationModule.kt'), [
+      ('setContentTitle("FlClash")', 'setContentTitle("$appName")'),
+    ]),
+    // android/service/src/main/java/.../NotificationParams.kt
+    (pathJoin(pathJoin(pathJoin(_current, 'android', 'service', 'src', 'main'), 'java', 'com', 'follow', 'clash'), 'service', 'models', 'NotificationParams.kt'), [
+      ('val title: String = "FlClash"', 'val title: String = "$appName"'),
+    ]),
+  ];
+
+  // 生成功能开关文件
+  await _generateFeatureFlags();
+
+  for (final (filePath, pairs) in tasks) {
+    final file = File(filePath);
+    if (!await file.exists()) {
+      print('  [SKIP] ${pathBasename(filePath)} (not found)');
+      continue;
+    }
+    var content = await file.readAsString();
+    var changed = false;
+    for (final (oldStr, newStr) in pairs) {
+      if (content.contains(oldStr)) {
+        content = content.replaceAll(oldStr, newStr);
+        changed = true;
+      }
+    }
+    if (changed) {
+      await file.writeAsString(content);
+      print('  [OK] ${pathBasename(filePath)}');
+    } else {
+      print('  [--] ${pathBasename(filePath)} (already up to date)');
+    }
+  }
+  print('=== Name sync complete ===');
+}
+
+Future<void> _generateFeatureFlags() async {
+  final features = _features;
+  final buffer = StringBuffer();
+  buffer.writeln('// 由 setup.dart _syncNames() 自动生成，请勿手动修改');
+  buffer.writeln('// 功能开关，控制 UI 控件的显隐\n');
+  buffer.writeln('class FeatureFlags {');
+  for (final entry in features.entries) {
+    final key = entry.key;
+    final value = entry.value;
+    if (value is bool) {
+      buffer.writeln('  /// $key\n  static const bool $key = $value;\n');
+    }
+  }
+  buffer.writeln('}');
+  final file = File(pathJoin(_current, 'lib', 'common', 'feature_flags.dart'));
+  await file.writeAsString(buffer.toString());
+  print('  [GEN] lib/common/feature_flags.dart');
+}
+
 enum Target { windows, linux, android, macos }
 
 extension TargetExt on Target {
@@ -108,9 +293,9 @@ class Build {
     BuildItem(target: Target.android, arch: Arch.amd64, archName: 'x86_64'),
   ];
 
-  static String get appName => 'FlClash';
+  static String get appName => _appName;
 
-  static String get coreName => 'FlClashCore';
+  static String get coreName => _coreName;
 
   static String get libName => 'libclash';
 
@@ -304,7 +489,7 @@ class Build {
     final targetPath = pathJoin(
       outDir,
       target.name,
-      'FlClashHelperService${target.executableExtensionName}',
+      '$_helperName${target.executableExtensionName}',
     );
     await File(outPath).copy(targetPath);
   }
@@ -532,6 +717,9 @@ class BuildCommand {
 }
 
 Future<void> main(List<String> args) async {
+  await _loadBuildConfig();
+  await _syncNames();
+
   if (args.isEmpty) {
     print('Usage: dart setup.dart <target> [--arch <arch>] [--out <out>] [--env <env>]');
     print('Targets: android, linux, windows, macos');

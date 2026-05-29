@@ -34,7 +34,7 @@ class Navigation {
             const ProfilesView(key: GlobalObjectKey(PageLabel.profiles)),
       ),
       NavigationItem(
-        icon: const Icon(Icons.shopping_bag),
+        icon: const Icon(Icons.store),
         label: PageLabel.shop,
         builder: (_) =>
             const ShopView(key: GlobalObjectKey(PageLabel.shop)),

@@ -68,3 +68,6 @@ devtools_options.yaml
 # FVM Version Cache
 .fvm/
 .fvmrc
+app_config.json
+lib/common/app_config.dart
+lib/common/feature_flags.dart

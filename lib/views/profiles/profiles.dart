@@ -1,3 +1,4 @@
+import 'package:fl_clash/common/feature_flags.dart';
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/controller.dart';
 import 'package:fl_clash/enum/enum.dart';
@@ -291,6 +292,22 @@ class ProfileItem extends StatelessWidget {
                         key: ValueKey('menu'),
                         popup: CommonPopupMenu(
                           items: [
+                            if (FeatureFlags.profileEditPreview) ...[
+                              PopupMenuItemData(
+                                icon: Icons.edit_outlined,
+                                label: appLocalizations.edit,
+                                onPressed: () {
+                                  _handleShowEditExtendPage(context);
+                                },
+                              ),
+                              PopupMenuItemData(
+                                icon: Icons.visibility_outlined,
+                                label: appLocalizations.preview,
+                                onPressed: () {
+                                  _handlePreview(context);
+                                },
+                              ),
+                            ],
                             if (profile.type == ProfileType.url) ...[
                               PopupMenuItemData(
                                 icon: Icons.sync_alt_sharp,

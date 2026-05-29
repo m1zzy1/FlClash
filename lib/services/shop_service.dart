@@ -43,12 +43,19 @@ class ShopService {
       'code': code,
       'plan_id': planId,
     });
-    final data = res['data'] as Map<String, dynamic>? ?? res;
-    return CouponResult(
-      valid: data['valid'] == true,
-      discount: (data['discount'] ?? 0) as num,
-      discountAmount: ((data['discount_amount'] ?? data['amount'] ?? 0) as num).toDouble(),
-    );
+    final data = res['data'];
+    // V2Board: 成功时 data 为对象 {type, value, name}，失败时 data 为 false/null
+    if (data is Map) {
+      return CouponResult(
+        valid: true,
+        discount: (data['discount'] ?? 0) as num,
+        discountAmount: ((data['discount_amount'] ?? data['amount'] ?? 0) as num).toDouble(),
+        type: (data['type'] ?? 0) as int,
+        name: data['name'] as String?,
+        value: ((data['value'] ?? 0) as num).toDouble(),
+      );
+    }
+    return CouponResult(valid: false, discount: 0, discountAmount: 0);
   }
 
   /// 提交订单
@@ -93,6 +100,16 @@ class ShopService {
     return data;
   }
 
+  /// 检查订单支付状态（0=待支付 1=开通中 2=已取消 3=已完成 4=已折抵）
+  Future<int> checkOrderStatus(String tradeNo) async {
+    final res = await apiClient.get('/user/order/check', queryParameters: {'trade_no': tradeNo});
+    final data = res['data'];
+    if (data is int) return data;
+    if (data is String) return int.tryParse(data) ?? 0;
+    if (data is Map && data.containsKey('status')) return (data['status'] as num).toInt();
+    return 0;
+  }
+
   /// 发起支付（结账）
   Future<PaymentCheckout> checkoutOrder(String tradeNo, String methodId) async {
     final res = await apiClient.post('/user/order/checkout', data: {
@@ -122,23 +139,102 @@ class ShopService {
     }
   }
 
+  /// 获取站点配置（获取 app_url 用于拼接邀请链接）
+  Future<String?> fetchAppUrl() async {
+    try {
+      // 与 EZ 主题一致：通过 apiClient 请求 /guest/comm/config
+      final res = await apiClient.get('/guest/comm/config');
+      // V2Board 返回 {data: {app_url: "https://...", ...}}
+      final data = res['data'];
+      if (data is Map) {
+        final appUrl = data['app_url'] as String?;
+        if (appUrl != null && appUrl.isNotEmpty) return appUrl;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 获取佣金发放记录
+  Future<List<Map<String, dynamic>>> fetchCommissionRecords({int page = 1, int pageSize = 10}) async {
+    try {
+      final res = await apiClient.get('/user/invite/details', queryParameters: {
+        'current': page,
+        'page_size': pageSize,
+      });
+      // 兼容两种返回结构：{data: [...]} 或 {data: {data: [...], total: N}}
+      var list = res['data'];
+      if (list is Map) list = list['data'];
+      if (list is List) {
+        return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
   /// 获取邀请数据
   Future<Map<String, dynamic>> fetchInviteData() async {
     final res = await apiClient.get('/user/invite/fetch');
-    return res['data'] as Map<String, dynamic>? ?? res;
+    final data = res['data'];
+    if (data is Map) return Map<String, dynamic>.from(data);
+    return res;
   }
 
   /// 生成邀请码
   Future<String?> generateInviteCode() async {
     final res = await apiClient.get('/user/invite/save');
-    final data = res['data'] as Map<String, dynamic>? ?? res;
-    return data['code'] as String? ?? data['invite_code'] as String?;
+    // 兼容多种返回格式：{data: true}、{data: {code: "xxx"}}、{data: "xxx"}
+    final data = res['data'];
+    if (data is Map) {
+      return data['code'] as String? ?? data['invite_code'] as String?;
+    }
+    if (data is String && data.isNotEmpty) {
+      return data;
+    }
+    // {data: true} 表示生成成功，返回空 sentinel
+    if (data == true) return '';
+    return null;
   }
 
-  /// 划转佣金到余额
+  /// 划转佣金到余额（金额单位：元，API 以分为单位）
   Future<bool> transferCommission(double amount) async {
     try {
-      await apiClient.post('/user/transfer', data: {'transfer_amount': amount});
+      final amountInCents = (amount * 100).round();
+      await apiClient.post('/user/transfer', data: {'transfer_amount': amountInCents});
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 获取佣金配置（提现方式、最低提现金额等）
+  Future<Map<String, dynamic>> fetchCommissionConfig() async {
+    try {
+      final res = await apiClient.get('/user/comm/config');
+      final data = res['data'];
+      if (data is Map) return Map<String, dynamic>.from(data);
+      return {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// 提现佣金
+  Future<bool> withdrawCommission({
+    required double amount,
+    required String account,
+    required String method,
+  }) async {
+    try {
+      final amountInCents = (amount * 100).round();
+      await apiClient.post('/user/ticket/withdraw', data: {
+        'withdraw_amount': amountInCents,
+        'withdraw_account': account,
+        'withdraw_method': method,
+      });
       return true;
     } catch (_) {
       return false;
@@ -176,7 +272,13 @@ class Plan {
   final int? nodeConnector;
   final int? trafficLimit;
   final int? sort;
+  final int? stock;
   final List<ContentItem> contentList;
+
+  bool get isRecurring =>
+      monthPrice > 0 || quarterPrice > 0 || halfYearPrice > 0 ||
+      yearPrice > 0 || twoYearPrice > 0 || threeYearPrice > 0;
+  bool get isOneTime => onetimePrice > 0;
 
   Plan({
     required this.id,
@@ -195,6 +297,7 @@ class Plan {
     this.nodeConnector,
     this.trafficLimit,
     this.sort,
+    this.stock,
     this.contentList = const [],
   });
 
@@ -203,9 +306,9 @@ class Plan {
     final options = <PriceOption>[];
     final entries = [
       ('month_price', '月付', monthPrice),
-      ('quarter_price', '季付', quarterPrice),
-      ('half_year_price', '半年付', halfYearPrice),
-      ('year_price', '年付', yearPrice),
+      ('quarter_price', '季度', quarterPrice),
+      ('half_year_price', '半年', halfYearPrice),
+      ('year_price', '一年', yearPrice),
       ('two_year_price', '两年付', twoYearPrice),
       ('three_year_price', '三年付', threeYearPrice),
       ('onetime_price', '一次性', onetimePrice),
@@ -254,6 +357,7 @@ class Plan {
       nodeConnector: json['node_connector'] as int?,
       trafficLimit: json['traffic_limit'] as int?,
       sort: json['sort'] as int?,
+      stock: json['stock'] as int?,
       contentList: contentList,
     );
   }
@@ -267,56 +371,67 @@ class Plan {
 
   static List<String> _parseJsonDescription(String text) {
     final trimmed = text.trim();
-    // JSON array of feature objects
-    if (trimmed.startsWith('[')) {
+    // JSON array of feature objects  [{"feature":"...","support":true}, ...]
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
       try {
         final list = const JsonDecoder().convert(trimmed);
         if (list is List) {
           final result = <String>[];
           for (final item in list) {
             if (item is Map) {
-              result.add((item['feature'] ?? item['name'] ?? item['text'] ?? item.toString()).toString());
+              final f = item['feature'] ?? item['name'] ?? item['text'] ?? item.toString();
+              result.add(_stripHtml(f.toString()));
             } else {
-              result.add(item.toString());
+              result.add(_stripHtml(item.toString()));
             }
           }
           if (result.isNotEmpty) return result;
         }
       } catch (_) {}
     }
-    // JSON object
-    if (trimmed.startsWith('{')) {
+    // JSON object  {"key": "value", ...}
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
       try {
         final decoded = const JsonDecoder().convert(trimmed);
         if (decoded is Map) {
           final result = <String>[];
           for (final val in decoded.values) {
             if (val is String && val.isNotEmpty) {
-              result.add(val);
+              result.add(_stripHtml(val));
             } else if (val is List) {
-              result.addAll(val.map((e) => e.toString()));
+              result.addAll(val.map((e) => _stripHtml(e.toString())));
             } else if (val is Map) {
-              result.add((val['feature'] ?? val['name'] ?? '').toString());
+              result.add(_stripHtml((val['feature'] ?? val['name'] ?? '').toString()));
             }
           }
           if (result.isNotEmpty) return result;
         }
       } catch (_) {}
     }
-    final htmlStripped = text
-        .replaceAll(RegExp(r'<[^>]*>'), '')
-        .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n');
-    if (htmlStripped.contains('\n')) {
-      return htmlStripped
+    // HTML or plain text fallback
+    final stripped = _stripHtml(text);
+    if (stripped.contains('\n')) {
+      return stripped
           .split('\n')
           .map((e) => e.trim())
           .where((e) => e.isNotEmpty)
           .toList();
     }
-    if (htmlStripped.isNotEmpty && htmlStripped != text) {
-      return [htmlStripped];
-    }
+    if (stripped.isNotEmpty) return [stripped];
     return [text];
+  }
+
+  /// 去除 HTML 标签并解码常见实体
+  static String _stripHtml(String html) {
+    return html
+        .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
+        .replaceAll(RegExp(r'<[^>]*>'), '')
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .trim();
   }
 }
 
@@ -339,11 +454,17 @@ class CouponResult {
   final bool valid;
   final num discount;
   final double discountAmount;
+  final int type; // 1=固定金额, 2=百分比
+  final String? name;
+  final double value; // 分(固定) 或 %(百分比)
 
   CouponResult({
     required this.valid,
     required this.discount,
     required this.discountAmount,
+    this.type = 0,
+    this.name,
+    this.value = 0,
   });
 }
 
@@ -397,9 +518,27 @@ class OrderItem {
   String get statusText {
     switch (status) {
       case 0: return '待支付';
-      case 1: return '已完成';
+      case 1: return '开通中';
       case 2: return '已取消';
+      case 3: return '已完成';
+      case 4: return '已折抵';
       default: return '未知';
+    }
+  }
+
+  String get periodText {
+    if (period == null) return '';
+    switch (period) {
+      case 'month_price': return '月付';
+      case 'quarter_price': return '季度';
+      case 'half_year_price': return '半年';
+      case 'year_price': return '一年';
+      case 'two_year_price': return '两年';
+      case 'three_year_price': return '三年';
+      case 'onetime_price': return '一次性';
+      case 'reset_price': return '重置';
+      case 'deposit': return '充值';
+      default: return period!;
     }
   }
 

@@ -225,6 +225,9 @@ class Windows {
   }
 
   Future<bool> registerService() async {
+    // 确保辅助服务端口 47890 未被残留进程占用
+    await _freeHelperPort();
+
     final status = await checkService();
 
     if (status == WindowsHelperServiceStatus.running) {
@@ -265,6 +268,26 @@ class Windows {
       delay: Duration(seconds: 1),
     );
     return res && retryStatus == WindowsHelperServiceStatus.running;
+  }
+
+  /// 查找并释放占用辅助服务端口 47890 的残留进程
+  Future<void> _freeHelperPort() async {
+    const port = 47890;
+    try {
+      final result = await Process.run('netstat', ['-ano']);
+      final lines = result.stdout.toString().split('\n');
+      for (final line in lines) {
+        if (!line.contains(':$port') || !line.contains('LISTENING')) continue;
+        final parts = line.trim().split(RegExp(r'\s+'));
+        final pid = int.tryParse(parts.last);
+        if (pid == null) continue;
+        // 跳过自身进程 ID 的比较（自身永远不可能是 0）
+        if (pid == 0) continue;
+        await Process.run('taskkill', ['/PID', pid.toString(), '/F']);
+        await Future.delayed(Duration(milliseconds: 300));
+        break;
+      }
+    } catch (_) {}
   }
 
   Future<bool> registerTask(String appName) async {

@@ -43,14 +43,44 @@ class ApiClient {
           }
           handler.next(options);
         },
+        onResponse: (response, handler) {
+          // V2Board 在 200 OK 中返回错误消息
+          final data = response.data;
+          if (data is Map) {
+            final msg = data['message'] as String? ?? '';
+            if (_isAuthErrorMessage(msg)) {
+              authService.clearAuth();
+            }
+          }
+          handler.next(response);
+        },
         onError: (error, handler) {
-          if (error.response?.statusCode == 401) {
+          // HTTP 401 或 V2Board 返回的 auth 失效错误
+          final statusCode = error.response?.statusCode;
+          final errorData = error.response?.data;
+          final isAuthError = statusCode == 401 ||
+              (statusCode == 200 &&
+                  errorData is Map &&
+                  _isAuthErrorMessage(errorData['message'] as String? ?? ''));
+          if (isAuthError) {
             authService.clearAuth();
           }
           handler.next(error);
         },
       ),
     );
+  }
+
+  /// 判断 V2Board auth 失效的错误消息
+  bool _isAuthErrorMessage(String msg) {
+    return msg.contains('未登录') ||
+        msg.contains('已过期') ||
+        msg.contains('auth failed') ||
+        msg.contains('Auth failed') ||
+        msg.contains('账号已被封禁') ||
+        msg.contains('账号已被删除') ||
+        msg.contains('已被禁用') ||
+        msg.contains('已被拉黑');
   }
 
   factory ApiClient() {

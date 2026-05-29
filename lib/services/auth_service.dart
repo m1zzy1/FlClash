@@ -1,9 +1,12 @@
 import 'package:fl_clash/services/api_client.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+typedef OnForceLogout = void Function();
 
 class AuthService {
   static AuthService? _instance;
+  static OnForceLogout? onForceLogout;
 
   AuthService._internal();
 
@@ -124,6 +127,10 @@ class AuthService {
   Future<void> clearAuth() async {
     apiClient.clear();
     await _clearPersistedAuth();
+    // 触发强制退出登录回调，通知 UI 跳转到登录页
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      onForceLogout?.call();
+    });
   }
 }
 
@@ -162,6 +169,7 @@ class UserInfo {
   final int? commissionBalance;
   final int? inviteCount;
   final int? inviteRate;
+  final bool? autoRenewal;
 
   UserInfo({
     this.email,
@@ -174,6 +182,7 @@ class UserInfo {
     this.commissionBalance,
     this.inviteCount,
     this.inviteRate,
+    this.autoRenewal,
   });
 
   factory UserInfo.fromJson(Map<String, dynamic> json) {
@@ -199,6 +208,7 @@ class UserInfo {
       commissionBalance: toInt(json['commission_balance']),
       inviteCount: toInt(json['invite_count']),
       inviteRate: toInt(json['invite_rate']),
+      autoRenewal: json['auto_renewal'] == 1,
     );
   }
 }

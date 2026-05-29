@@ -3,10 +3,13 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
+import 'package:fl_clash/common/app_config.dart';
+import 'package:fl_clash/common/feature_flags.dart';
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/controller.dart';
 import 'package:fl_clash/services/auth_service.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -34,16 +37,19 @@ class _LoginPageState extends State<LoginPage> {
   final _confirmPasswordController = TextEditingController();
   final _codeController = TextEditingController();
   final _resetPasswordController = TextEditingController();
-  bool _agreeTerms = false;
+  final _confirmResetPasswordController = TextEditingController();
+  bool _agreeTerms = true;
   bool _codeSent = false;
   bool _isResetting = false;
   bool _obscureConfirmPassword = true;
   bool _obscureResetPassword = true;
+  bool _obscureConfirmResetPassword = true;
   final _emailPrefixController = TextEditingController();
   String _selectedSuffix = '';
   bool _showSuffixDropdown = false;
   String _siteDescription = '登录到您的账户';
   String _appUrl = '';
+  String _tosUrl = '';
   List<String> _emailWhitelist = [];
   String? _errorMessage;
 
@@ -56,7 +62,6 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _loadSavedInfo() async {
     final sp = await SharedPreferences.getInstance();
     final savedUrl = sp.getString('api_base_url');
-    final savedApiPath = sp.getString('api_path');
     final savedEmail = sp.getString('login_email');
     final savedPassword = sp.getString('login_password');
     final savedRemember = sp.getBool('login_remember');
@@ -69,8 +74,69 @@ class _LoginPageState extends State<LoginPage> {
       _rememberMe = false;
     }
     if (savedUrl != null) _serverUrlController.text = savedUrl;
-    if (savedApiPath != null) _apiPathController.text = savedApiPath;
+    await _fetchOssUrl();
     _loadSiteConfig();
+  }
+
+  Future<void> _fetchOssUrl() async {
+    if (!FeatureFlags.enableAppConfig) return;
+    // 1. 从 OSS 获取服务器地址列表
+    List<String> urls = [];
+    for (final ossUrl in AppConfig.oss) {
+      try {
+        final dio = Dio(BaseOptions(
+          connectTimeout: const Duration(seconds: 8),
+          headers: {'User-Agent': browserUa},
+        ));
+        if (ossUrl.startsWith('https')) {
+          dio.httpClientAdapter = IOHttpClientAdapter(
+            createHttpClient: () {
+              final client = HttpClient();
+              client.badCertificateCallback = (_, _, _) => true;
+              return client;
+            },
+          );
+        }
+        final response = await dio.get<String>(ossUrl);
+        if (response.statusCode != 200 || response.data == null) continue;
+        final decoded = utf8.decode(base64Decode(response.data!.trim()));
+        final jsonData = json.decode(decoded);
+        if (jsonData is Map && jsonData['urls'] is List) {
+          urls = (jsonData['urls'] as List).cast<String>();
+          break;
+        }
+      } catch (_) {
+        continue;
+      }
+    }
+    if (urls.isEmpty) return;
+
+    // 2. 逐个测试连通性，用第一个通的地址
+    for (final url in urls) {
+      try {
+        final testUrl = '${url.endsWith('/') ? url.substring(0, url.length - 1) : url}/api/v1/guest/comm/config';
+        final dio = Dio(BaseOptions(
+          connectTimeout: const Duration(seconds: 5),
+          headers: {'User-Agent': browserUa},
+        ));
+        if (testUrl.startsWith('https')) {
+          dio.httpClientAdapter = IOHttpClientAdapter(
+            createHttpClient: () {
+              final client = HttpClient();
+              client.badCertificateCallback = (_, _, _) => true;
+              return client;
+            },
+          );
+        }
+        final res = await dio.get(testUrl);
+        if (res.statusCode == 200) {
+          if (mounted) setState(() => _serverUrlController.text = url);
+          return;
+        }
+      } catch (_) {
+        continue;
+      }
+    }
   }
 
   Future<void> _loadSiteConfig() async {
@@ -90,6 +156,7 @@ class _LoginPageState extends State<LoginPage> {
           createHttpClient: () {
             final client = HttpClient();
             client.badCertificateCallback = (_, _, _) => true;
+            client.findProxy = (uri) => 'DIRECT';
             return client;
           },
         );
@@ -102,6 +169,8 @@ class _LoginPageState extends State<LoginPage> {
         if (desc != null && desc.isNotEmpty) _siteDescription = desc;
         final appUrl = data['app_url'] as String?;
         if (appUrl != null && appUrl.isNotEmpty) _appUrl = appUrl;
+        final tosUrl = data['tos_url'] as String?;
+        if (tosUrl != null && tosUrl.isNotEmpty) _tosUrl = tosUrl;
         final whitelist = data['email_whitelist_suffix'];
         if (whitelist is List) {
           _emailWhitelist = whitelist.cast<String>();
@@ -119,11 +188,11 @@ class _LoginPageState extends State<LoginPage> {
   @override
   void dispose() {
     _serverUrlController.dispose();
-    _apiPathController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _inviteCodeController.dispose();
     _confirmPasswordController.dispose();
+    _confirmResetPasswordController.dispose();
     _codeController.dispose();
     _resetPasswordController.dispose();
     super.dispose();
@@ -238,6 +307,7 @@ class _LoginPageState extends State<LoginPage> {
         createHttpClient: () {
           final client = HttpClient();
           client.badCertificateCallback = (_, _, _) => true;
+          client.findProxy = (uri) => 'DIRECT';
           return client;
         },
       );
@@ -287,6 +357,7 @@ class _LoginPageState extends State<LoginPage> {
     final code = _codeController.text.trim();
     if (code.isEmpty) { _isResetting = false; setState(() => _errorMessage = '请输入验证码'); return; }
     if (_resetPasswordController.text.length < 6) { _isResetting = false; setState(() => _errorMessage = '密码长度不能少于 6 位'); return; }
+    if (_resetPasswordController.text != _confirmResetPasswordController.text) { _isResetting = false; setState(() => _errorMessage = '两次密码不一致'); return; }
 
     setState(() { _isLoading = true; _errorMessage = null; });
     try {
@@ -327,14 +398,7 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _autoSyncSubscribe() async {
     try {
-      final url = await authService.fetchSubscribeUrl();
-      if (url == null) return;
-      final currentProfile = appController.currentProfile;
-      if (currentProfile != null) {
-        await appController.updateProfile(currentProfile.copyWith(url: url));
-      } else {
-        await appController.addProfileFormURL(url);
-      }
+      await appController.syncSubscriptionNow();
     } catch (_) {}
   }
 
@@ -430,16 +494,51 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   String _formatError(Object error) {
+    // 优先从 DioException 的响应数据中提取 V2Board 返回的 message
+    if (error is DioException) {
+      final response = error.response;
+      // V2Board 返回的 message 可能在 response.data 或 response.data['message']
+      if (response?.data != null) {
+        if (response!.data is Map) {
+          final data = response.data as Map;
+          final apiMessage = data['message'] as String? ?? data['error'] as String?;
+          if (apiMessage != null && apiMessage.isNotEmpty) {
+            return apiMessage;
+          }
+        }
+      }
+      // 按 HTTP 状态码映射友好提示
+      final statusCode = response?.statusCode;
+      if (statusCode != null) {
+        switch (statusCode) {
+          case 400: return '请求参数错误';
+          case 401: return '邮箱或密码错误';
+          case 403: return '拒绝访问';
+          case 404: return '请求的资源不存在';
+          case 500: return '服务器内部错误，请稍后重试';
+          case 502: return '服务器网关错误';
+          case 503: return '服务器暂时不可用';
+        }
+      }
+      // 网络层错误
+      final type = error.type;
+      switch (type) {
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.receiveTimeout:
+        case DioExceptionType.sendTimeout:
+          return '连接超时，请检查网络';
+        case DioExceptionType.connectionError:
+          final msg = error.message ?? '';
+          if (msg.contains('Connection refused') || msg.contains('SocketException')) {
+            return '无法连接到服务器，请检查服务器地址和网络';
+          }
+          return '网络连接失败，请检查网络';
+        default:
+          break;
+      }
+    }
+    // 非 DioException 的兜底
     final msg = error.toString();
-    if (msg.contains('Connection refused') || msg.contains('SocketException')) {
-      return '无法连接到服务器，请检查服务器地址和网络';
-    }
-    if (msg.contains('401') || msg.contains('Unauthorized')) {
-      return '邮箱或密码错误';
-    }
-    if (msg.contains('timeout')) {
-      return '连接超时，请检查网络';
-    }
     if (msg.contains('HttpConnection closed') ||
         msg.contains('HandshakeException') ||
         msg.contains('TLS')) {
@@ -448,10 +547,7 @@ class _LoginPageState extends State<LoginPage> {
     if (msg.contains('Connection reset')) {
       return '连接被重置，服务器可能不支持当前请求';
     }
-    if (msg.contains('XMLHttpRequest')) {
-      return '跨域请求失败';
-    }
-    return '${_isRegisterMode ? "注册" : "登录"}失败: ${error.toString().replaceFirst('Exception: ', '')}';
+    return error.toString().replaceFirst('Exception: ', '');
   }
 
   @override
@@ -466,6 +562,7 @@ class _LoginPageState extends State<LoginPage> {
             icon: const Icon(Icons.refresh),
             onPressed: () {
               _loadSiteConfig();
+              _fetchOssUrl();
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('已刷新'), duration: Duration(seconds: 1)),
               );
@@ -490,7 +587,7 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'FlClash',
+                    appName,
                     textAlign: TextAlign.center,
                     style: theme.textTheme.headlineMedium?.copyWith(
                       fontWeight: FontWeight.bold,
@@ -499,7 +596,7 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    _isForgotPasswordMode ? '重置密码' : (_isRegisterMode ? '创建新账户' : _siteDescription),
+                    _isForgotPasswordMode ? '重置密码' : (_isRegisterMode ? '创建账户' : _siteDescription),
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: colorScheme.onSurfaceVariant,
@@ -508,6 +605,7 @@ class _LoginPageState extends State<LoginPage> {
                   const SizedBox(height: 32),
 
                   // Server URL
+                  if (FeatureFlags.showServerUrlInput)
                   TextFormField(
                     controller: _serverUrlController,
                     decoration: InputDecoration(
@@ -530,19 +628,21 @@ class _LoginPageState extends State<LoginPage> {
                       return null;
                     },
                   ),
-                  const SizedBox(height: 12),
+                  if (FeatureFlags.showServerUrlInput) const SizedBox(height: 12),
 
                   // API Path
+                  if (FeatureFlags.showServerUrlInput)
                   TextFormField(
                     controller: _apiPathController,
                     decoration: InputDecoration(
-                      labelText: 'API 路径',
+                      labelText: 'API 接口路径',
                       hintText: '/api/v1',
-                      prefixIcon: const Icon(Icons.route_outlined),
+                      prefixIcon: const Icon(Icons.api_outlined),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
+                    keyboardType: TextInputType.text,
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {
                         return '请输入 API 路径';
@@ -553,7 +653,7 @@ class _LoginPageState extends State<LoginPage> {
                       return null;
                     },
                   ),
-                  const SizedBox(height: 12),
+                  if (FeatureFlags.showServerUrlInput) const SizedBox(height: 12),
 
                   // Email
                   _isRegisterMode && _emailWhitelist.isNotEmpty
@@ -562,7 +662,8 @@ class _LoginPageState extends State<LoginPage> {
                       controller: _emailController,
                       decoration: InputDecoration(
                         labelText: '邮箱',
-                        hintText: 'your@email.com',
+                        hintText: '请输入邮件地址',
+                        hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
                         prefixIcon: const Icon(Icons.email_outlined),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       ),
@@ -615,6 +716,25 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                     const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _confirmResetPasswordController,
+                      obscureText: _obscureConfirmResetPassword,
+                      decoration: InputDecoration(
+                        labelText: '确认密码',
+                        prefixIcon: const Icon(Icons.lock_outlined),
+                        suffixIcon: IconButton(
+                          icon: Icon(_obscureConfirmResetPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                          onPressed: () => setState(() => _obscureConfirmResetPassword = !_obscureConfirmResetPassword),
+                        ),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) return '请确认密码';
+                        if (value != _resetPasswordController.text) return '两次密码不一致';
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
                   ] else
                   // Password
                   TextFormField(
@@ -622,6 +742,8 @@ class _LoginPageState extends State<LoginPage> {
                     obscureText: _obscurePassword,
                     decoration: InputDecoration(
                       labelText: '密码',
+                      hintText: '请输入密码',
+                      hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
                       prefixIcon: const Icon(Icons.lock_outlined),
                       suffixIcon: IconButton(
                         icon: Icon(
@@ -644,23 +766,10 @@ class _LoginPageState extends State<LoginPage> {
                     },
                     onFieldSubmitted: (_) => _isForgotPasswordMode ? _handleReset() : (_isRegisterMode ? _handleRegister() : _handleLogin()),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
 
-                  // 注册模式：邀请码 + 确认密码 + 服务条款
+                  // 注册模式：确认密码 + 邀请码 + 服务条款
                   if (_isRegisterMode) ...[
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: TextFormField(
-                        controller: _inviteCodeController,
-                        decoration: InputDecoration(
-                          labelText: '邀请码（选填）',
-                          hintText: '如有邀请码请填写',
-                          prefixIcon: const Icon(Icons.card_giftcard_outlined),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
                     TextFormField(
                       controller: _confirmPasswordController,
                       obscureText: _obscureConfirmPassword,
@@ -679,7 +788,17 @@ class _LoginPageState extends State<LoginPage> {
                         return null;
                       },
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _inviteCodeController,
+                      decoration: InputDecoration(
+                        labelText: '邀请码（选填）',
+                        hintText: '如有邀请码请填写',
+                        prefixIcon: const Icon(Icons.card_giftcard_outlined),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     Row(
                       children: [
                         SizedBox(
@@ -692,7 +811,27 @@ class _LoginPageState extends State<LoginPage> {
                         Expanded(
                           child: GestureDetector(
                             onTap: () => setState(() => _agreeTerms = !_agreeTerms),
-                            child: const Text('我已阅读并同意服务条款', style: TextStyle(fontSize: 13)),
+                            child: RichText(
+                              text: TextSpan(
+                                style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurface),
+                                children: [
+                                  const TextSpan(text: '我已阅读并同意 '),
+                                  TextSpan(
+                                    text: '服务条款',
+                                    style: TextStyle(
+                                      color: Theme.of(context).colorScheme.primary,
+                                    ),
+                                    recognizer: TapGestureRecognizer()
+                                      ..onTap = () {
+                                        final uri = Uri.tryParse(_tosUrl);
+                                        if (uri != null) {
+                                          launchUrl(uri, mode: LaunchMode.externalApplication);
+                                        }
+                                      },
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -750,7 +889,7 @@ class _LoginPageState extends State<LoginPage> {
                             ),
                           )
                         : Text(
-                            _isForgotPasswordMode ? '重置密码' : (_isRegisterMode ? '注册' : '登录'),
+                            _isForgotPasswordMode ? '重置密码' : (_isRegisterMode ? '创建账户' : '登录'),
                             style: const TextStyle(fontSize: 16),
                           ),
                   ),
@@ -788,34 +927,47 @@ class _LoginPageState extends State<LoginPage> {
                       ],
                     )
                   else
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    Column(
                       children: [
-                        TextButton(
-                          onPressed: () { setState(() { _isRegisterMode = true; _errorMessage = null; }); },
-                          child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            const Icon(Icons.person_add_outlined, size: 16),
-                            const SizedBox(width: 4),
-                            const Text('创建账户'),
-                          ]),
-                        ),
                         Row(
-                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            TextButton(
+                              onPressed: () { setState(() { _isRegisterMode = true; _errorMessage = null; }); },
+                              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                const Icon(Icons.person_add_outlined, size: 16),
+                                const SizedBox(width: 4),
+                                const Text('创建账户'),
+                              ]),
+                            ),
+                            TextButton(
+                              onPressed: _handleForgotPassword,
+                              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                const Icon(Icons.lock_outline, size: 16),
+                                const SizedBox(width: 4),
+                                const Text('忘记密码'),
+                              ]),
+                            ),
+                          ],
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16),
+                          child: Divider(height: 1, thickness: 0.5),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             TextButton(
                               onPressed: () async {
-                                try {
-                                  final configFile = File('app_config.json');
-                                  if (!await configFile.exists()) return;
-                                  final jsonStr = await configFile.readAsString();
-                                  final config = jsonDecode(jsonStr) as Map<String, dynamic>;
-                                  final crispId = config['crisp'] as String?;
-                                  if (crispId == null || crispId.isEmpty) return;
-                                  final uri = Uri.parse('https://go.crisp.chat/chat/embed/?website_id=$crispId');
-                                  if (await canLaunchUrl(uri)) {
-                                    await launchUrl(uri, mode: LaunchMode.externalApplication);
-                                  }
-                                } catch (_) {}
+                                final crispId = FeatureFlags.enableAppConfig ? AppConfig.crispId : null;
+                                if (crispId == null || crispId.isEmpty) return;
+                                final uri = Uri.parse(
+                                  'https://go.crisp.chat/chat/embed/?website_id=$crispId',
+                                );
+                                if (await canLaunchUrl(uri)) {
+                                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                }
                               },
                               child: Row(mainAxisSize: MainAxisSize.min, children: [
                                 const Icon(Icons.headphones_outlined, size: 14),
@@ -842,21 +994,13 @@ class _LoginPageState extends State<LoginPage> {
                             ),
                           ],
                         ),
-                        TextButton(
-                          onPressed: _handleForgotPassword,
-                          child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            const Icon(Icons.lock_outline, size: 16),
-                            const SizedBox(width: 4),
-                            const Text('忘记密码'),
-                          ]),
-                        ),
                       ],
                     ),
-                ],
-                  ), // Form Column
-                ), // Form
-              ), // SingleChildScrollView
-            ), // Center
-    ); // Scaffold
+                  ],
+                ),
+              ),
+            ),
+          ),
+    );
   }
 }

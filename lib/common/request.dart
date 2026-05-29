@@ -88,7 +88,18 @@ class Request {
       final body = response.data as Map<String, dynamic>?;
       final v2Data = body?['data'] as Map<String, dynamic>?;
       if (v2Data == null) return null;
-      final remoteVersion = v2Data['windows_version'] as String?;
+      String versionKey, downloadKey;
+      if (system.isAndroid) {
+        versionKey = 'android_version';
+        downloadKey = 'android_download_url';
+      } else if (system.isMacOS) {
+        versionKey = 'macos_version';
+        downloadKey = 'macos_download_url';
+      } else {
+        versionKey = 'windows_version';
+        downloadKey = 'windows_download_url';
+      }
+      final remoteVersion = v2Data[versionKey] as String?;
       if (remoteVersion == null) return null;
       final version = globalState.packageInfo.version;
       final hasUpdate =
@@ -97,7 +108,7 @@ class Request {
       return {
         'tag_name': 'v$remoteVersion',
         'body': '',
-        'download_url': v2Data['windows_download_url'] ?? '',
+        'download_url': v2Data[downloadKey] ?? '',
       };
     } catch (e) {
       commonPrint.log('checkForUpdate failed', logLevel: LogLevel.warning);
