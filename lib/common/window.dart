@@ -24,7 +24,7 @@ class Window {
     if (system.isWindows) {
       protocol.register('clash');
       protocol.register('clashmeta');
-      protocol.register('sororain');
+      protocol.register('koipy');
     }
     await windowManager.ensureInitialized();
     // kDebugMode ? Size(680, 580) :

@@ -329,7 +329,7 @@ class _PlanCardState extends State<_PlanCard> {
       }
     }
 
-    // 选择的价格选项
+    // Price
     final displayPrice = selOpt?.price ?? (options.isEmpty ? 0.0 : options.first.price);
     final displayLabel = selOpt?.label ?? '';
     final discount = selOpt != null ? _calcDiscount(selOpt, monthPrice) : 0.0;
@@ -339,16 +339,16 @@ class _PlanCardState extends State<_PlanCard> {
 
     return Card(
       margin: const EdgeInsets.only(bottom: 14),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5))),
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Header: name + stock badge ──
-            Row(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      elevation: 1,
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ── Header: name + stock badge ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
@@ -367,102 +367,118 @@ class _PlanCardState extends State<_PlanCard> {
                   ),
               ],
             ),
+          ),
 
-            // ── Pricing: 简洁金额 ¥ XX.XX ──
-            const SizedBox(height: 8),
-            Text('¥${displayPrice.toStringAsFixed(2)}',
-                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: cs.onSurface)),
-
-            // ── Period tags ──
-            if (options.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 10,
-                runSpacing: 8,
-                children: options.map((opt) {
-                    final sel = opt.key == _selectedPeriod;
-                    final d = _calcDiscount(opt, monthPrice);
-                    return GestureDetector(
-                      onTap: () => setState(() => _selectedPeriod = opt.key),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: sel ? cs.primary : cs.primary.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.check_rounded,
-                              size: 12,
-                              color: sel ? Colors.white : cs.primary.withValues(alpha: 0.4),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(opt.label,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                  color: sel ? Colors.white : cs.onSurface,
-                                )),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
-              ),
-            ],
-
-            // ── Features ──
-            if (widget.plan.contentList.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              Divider(height: 1, color: cs.outlineVariant.withValues(alpha: 0.5)),
-              const SizedBox(height: 12),
-              ...widget.plan.contentList.map((item) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 5),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Icon(
-                        item.support ? Icons.check_circle_rounded : Icons.remove_circle_outline_rounded,
-                        size: 18,
-                        color: item.support ? cs.primary : cs.onSurfaceVariant.withValues(alpha: 0.4),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(item.text, style: TextStyle(
-                        fontSize: 14,
-                        height: 1.3,
-                        color: item.support ? cs.onSurface : cs.onSurfaceVariant.withValues(alpha: 0.5),
-                      )),
-                    ),
-                  ],
-                ),
-              )),
-            ],
-
-            // ── Purchase button ──
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: soldOut ? null : () {
-                  _navigateToOrder(context);
-                },
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(40),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  backgroundColor: soldOut ? null : cs.primary,
-                ),
-                child: Text(soldOut ? '已售罄' : '购买',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-              ),
+          // ── Pricing section: 类似 v2_theme bg-gray-light ──
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('¥${displayPrice.toStringAsFixed(2)}',
+                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: cs.onSurface)),
+              ],
             ),
-          ],
-        ),
+          ),
+
+          // ── Content: period tags + features + button ──
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Period tags
+                if (options.isNotEmpty) ...[
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 8,
+                    children: options.map((opt) {
+                        final sel = opt.key == _selectedPeriod;
+                        final d = _calcDiscount(opt, monthPrice);
+                        return GestureDetector(
+                          onTap: () => setState(() => _selectedPeriod = opt.key),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: sel ? cs.primary : cs.primary.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.check_rounded,
+                                  size: 12,
+                                  color: sel ? Colors.white : cs.primary.withValues(alpha: 0.4),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(opt.label,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                      color: sel ? Colors.white : cs.onSurface,
+                                    )),
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
+                // ── Features ──
+                if (widget.plan.contentList.isNotEmpty) ...[
+                  ...widget.plan.contentList.map((item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 3),
+                          child: Icon(
+                            item.support ? Icons.check_circle : Icons.cancel,
+                            size: 16,
+                            color: cs.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(item.text, style: TextStyle(
+                            fontSize: 14,
+                            height: 1.4,
+                            color: item.support ? cs.onSurface : cs.onSurface.withValues(alpha: 0.35),
+                          )),
+                        ),
+                      ],
+                    ),
+                  )),
+                  const SizedBox(height: 16),
+                ],
+
+                // ── Purchase button ──
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: soldOut ? null : () {
+                      _navigateToOrder(context);
+                    },
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(40),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      backgroundColor: soldOut ? null : cs.primary,
+                    ),
+                    child: Text(soldOut ? '已售罄' : '购买',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -482,6 +498,141 @@ int _periodMonths(String key) {
     'year_price': 12, 'two_year_price': 24, 'three_year_price': 36,
   };
   return map[key] ?? 1;
+}
+
+// ──────────────────────────────────────────────
+//  Notices Page  — 公告列表（v2_theme 风格）
+// ──────────────────────────────────────────────
+class NoticesPage extends StatefulWidget {
+  const NoticesPage({super.key});
+
+  @override
+  State<NoticesPage> createState() => _NoticesPageState();
+}
+
+class _NoticesPageState extends State<NoticesPage> {
+  List<NoticeItem> _notices = [];
+  bool _isLoading = true;
+  bool _loadError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotices();
+  }
+
+  Future<void> _loadNotices() async {
+    setState(() { _isLoading = true; _loadError = false; });
+    final notices = await shopService.fetchNotices();
+    if (mounted) {
+      setState(() {
+        _notices = notices;
+        _isLoading = false;
+        _loadError = notices.isEmpty;
+      });
+    }
+  }
+
+  void _showNoticeDetail(NoticeItem notice) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(children: [
+          const Icon(Icons.notifications_active, size: 20),
+          const SizedBox(width: 8),
+          Expanded(child: Text(notice.title, style: const TextStyle(fontSize: 16))),
+        ]),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (notice.imgUrl != null && notice.imgUrl!.isNotEmpty) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: Image.network(
+                      notice.imgUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                      loadingBuilder: (_, child, loadingProgress) =>
+                          loadingProgress == null
+                              ? child
+                              : const Center(child: CircularProgressIndicator()),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              Text(notice.content, style: const TextStyle(fontSize: 14, height: 1.6)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('系统公告'),
+        actions: [
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadNotices),
+        ],
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _notices.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.notifications_off_outlined, size: 48, color: cs.onSurfaceVariant.withValues(alpha: 0.5)),
+                      const SizedBox(height: 12),
+                      Text('暂无公告', style: TextStyle(color: cs.onSurfaceVariant)),
+                    ],
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _notices.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (_, i) {
+                    final notice = _notices[i];
+                    final date = notice.displayTime > 0
+                        ? '${DateTime.fromMillisecondsSinceEpoch(notice.displayTime * 1000).year}/'
+                          '${DateTime.fromMillisecondsSinceEpoch(notice.displayTime * 1000).month.toString().padLeft(2, '0')}/'
+                          '${DateTime.fromMillisecondsSinceEpoch(notice.displayTime * 1000).day.toString().padLeft(2, '0')}'
+                        : '';
+                    final isPopup = notice.tags.any((t) => t.contains('弹窗'));
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                      leading: Container(
+                        width: 40, height: 40,
+                        decoration: BoxDecoration(
+                          color: cs.primary.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          isPopup ? Icons.campaign_rounded : Icons.notifications_none_rounded,
+                          size: 20, color: cs.primary,
+                        ),
+                      ),
+                      title: Text(notice.title, style: const TextStyle(fontWeight: FontWeight.w500)),
+                      subtitle: date.isNotEmpty ? Text(date, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)) : null,
+                      trailing: const Icon(Icons.chevron_right, size: 18),
+                      onTap: () => _showNoticeDetail(notice),
+                    );
+                  },
+                ),
+    );
+  }
 }
 
 // ──────────────────────────────────────────────

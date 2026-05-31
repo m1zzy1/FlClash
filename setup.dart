@@ -44,120 +44,194 @@ String get _appId => _buildConfig?['appId'] as String? ?? '728B3532-C74B-4870-90
 String get _packageName => _buildConfig?['packageName'] as String? ?? 'com.follow.clash';
 Map<String, dynamic> get _features => _buildConfig?['features'] as Map<String, dynamic>? ?? {};
 
+Future<String> _detectCurrentAppName() async {
+  // 从 constant.dart 中读取当前的 appName
+  final file = File(pathJoin(_current, 'lib', 'common', 'constant.dart'));
+  if (await file.exists()) {
+    final content = await file.readAsString();
+    final reg = RegExp(r"const appName = '([^']+)'");
+    final match = reg.firstMatch(content);
+    if (match != null) return match.group(1)!;
+  }
+  return 'FlClash'; // 默认值
+}
+
+Future<String> _detectCurrentHelperName() async {
+  final file = File(pathJoin(_current, 'lib', 'common', 'constant.dart'));
+  if (await file.exists()) {
+    final content = await file.readAsString();
+    final reg = RegExp(r"const appHelperService = '([^']+)'");
+    final match = reg.firstMatch(content);
+    if (match != null) return match.group(1)!;
+  }
+  return 'FlClashHelperService';
+}
+
+Future<String> _detectCurrentCoreName() async {
+  // 从 path.dart 中检测当前 core 文件名
+  final file = File(pathJoin(_current, 'lib', 'common', 'path.dart'));
+  if (await file.exists()) {
+    final content = await file.readAsString();
+    final reg = RegExp(r"join\(executableDirPath, '(.+)Core");
+    final match = reg.firstMatch(content);
+    if (match != null) return '${match.group(1)}Core';
+  }
+  return 'FlClashCore';
+}
+
+Future<String> _detectCurrentPackageName() async {
+  // 从 android/app/build.gradle.kts 中检测当前包名
+  final file = File(pathJoin(_current, 'android', 'app', 'build.gradle.kts'));
+  if (await file.exists()) {
+    final content = await file.readAsString();
+    final reg = RegExp(r'applicationId = "([^"]+)"');
+    final match = reg.firstMatch(content);
+    if (match != null) return match.group(1)!;
+  }
+  return 'com.follow.clash';
+}
+
 Future<void> _syncNames() async {
   final appName = _appName;
   final coreName = _coreName;
   final helperName = _helperName;
+
+  // 检测当前文件中已有的旧名称
+  final oldAppName = await _detectCurrentAppName();
+  final oldHelperName = await _detectCurrentHelperName();
+  final oldCoreName = await _detectCurrentCoreName();
+  final oldPackageName = await _detectCurrentPackageName();
+  final oldAppNameLower = oldAppName.toLowerCase();
+
   print('=== Syncing names from app_config.json ===');
-  print('  appName=$appName  coreName=$coreName  helperName=$helperName');
+  print('  oldName=$oldAppName → newName=$appName');
+  print('  oldCore=$oldCoreName → newCore=$coreName');
+  print('  oldHelper=$oldHelperName → newHelper=$helperName');
+
+  // 替换辅助：用检测到的旧名称替换硬编码的 FlClash
+  String p(String pattern) => pattern.replaceAll('FlClash', oldAppName);
+  String pCore(String pattern) => pattern.replaceAll('FlClashCore', oldCoreName);
+  String pHelper(String pattern) => pattern.replaceAll('FlClashHelperService', oldHelperName);
 
   final tasks = <(String, List<(String, String)>)>[
     // windows/CMakeLists.txt
     (pathJoin(_current, 'windows', 'CMakeLists.txt'), [
-      ('project(FlClash LANGUAGES CXX)', 'project($appName LANGUAGES CXX)'),
-      ('set(BINARY_NAME "FlClash")', 'set(BINARY_NAME "$appName")'),
-      ('/FlClashCore.exe"', '/$coreName.exe"'),
-      ('/FlClashHelperService.exe"', '/$helperName.exe"'),
+      // ⚠️ 不替换 project(FlClash ...) — CMake target 名必须保持 FlClash
+      (p('set(BINARY_NAME "FlClash")'), 'set(BINARY_NAME "$appName")'),
+      (p('/FlClashCore.exe"'), '/$coreName.exe"'),
+      (p('/FlClashHelperService.exe"'), '/$helperName.exe"'),
+      // install 段落 - 不同格式
+      ('"\${CLASH_DIR}/$oldCoreName.exe"', '"\${CLASH_DIR}/$coreName.exe"'),
+      ('"\${CLASH_DIR}/$oldHelperName.exe"', '"\${CLASH_DIR}/$helperName.exe"'),
     ]),
     // windows/runner/Runner.rc
     (pathJoin(_current, 'windows', 'runner', 'Runner.rc'), [
-      ('VALUE "FileDescription", "FlClash"', 'VALUE "FileDescription", "$appName"'),
-      ('VALUE "OriginalFilename", "FlClash.exe"', 'VALUE "OriginalFilename", "$appName.exe"'),
+      (p('VALUE "FileDescription", "FlClash"'), 'VALUE "FileDescription", "$appName"'),
+      (p('VALUE "OriginalFilename", "FlClash.exe"'), 'VALUE "OriginalFilename", "$appName.exe"'),
       ('VALUE "ProductName", "clash"', 'VALUE "ProductName", "$appName"'),
       ('VALUE "InternalName", "clash"', 'VALUE "InternalName", "$appName"'),
+      ('VALUE "ProductName", "$oldAppName"', 'VALUE "ProductName", "$appName"'),
+      ('VALUE "InternalName", "$oldAppName"', 'VALUE "InternalName", "$appName"'),
     ]),
     // windows/runner/main.cpp
     (pathJoin(_current, 'windows', 'runner', 'main.cpp'), [
-      ('window.Create(L"FlClash"', 'window.Create(L"$appName"'),
+      (p('window.Create(L"FlClash"'), 'window.Create(L"$appName"'),
     ]),
     // make_config.yaml
     (pathJoin(_current, 'windows', 'packaging', 'exe', 'make_config.yaml'), [
       ('app_id: 728B3532-C74B-4870-9068-BE70FE12A3E6', 'app_id: $_appId'),
-      ('app_name: FlClash', 'app_name: $appName'),
-      ('display_name: FlClash', 'display_name: $appName'),
-      ('executable_name: FlClash.exe', 'executable_name: $appName.exe'),
-      ('output_base_file_name: FlClash.exe', 'output_base_file_name: $appName.exe'),
+      (p('app_name: FlClash'), 'app_name: $appName'),
+      (p('display_name: FlClash'), 'display_name: $appName'),
+      (p('executable_name: FlClash.exe'), 'executable_name: $appName.exe'),
+      (p('output_base_file_name: FlClash.exe'), 'output_base_file_name: $appName.exe'),
+      ('publisher: $oldAppName', 'publisher: $appName'),
     ]),
     // distribute_options.yaml
     (pathJoin(_current, 'distribute_options.yaml'), [
-      ("app_name: 'FlClash'", "app_name: '$appName'"),
+      (p("app_name: 'FlClash'"), "app_name: '$appName'"),
     ]),
     // inno_setup.iss
     (pathJoin(_current, 'windows', 'packaging', 'exe', 'inno_setup.iss'), [
-      ("['FlClash.exe', 'FlClashCore.exe', 'FlClashHelperService.exe']",
+      // 注意：手动拼接 old 字符串，因为 helper 名不含 "Service" 后缀
+      ("['$oldAppName.exe', '$oldCoreName.exe', '$oldHelperName.exe']",
        "['$appName.exe', '$coreName.exe', '$helperName.exe']"),
     ]),
     // lib/common/path.dart
     (pathJoin(_current, 'lib', 'common', 'path.dart'), [
-      ("FlClashCore\$executableExtension'", "$coreName\$executableExtension'"),
-      ("'FlClash.lock'", "'\$appName.lock'"),
+      (pCore("FlClashCore\$executableExtension'"), "$coreName\$executableExtension'"),
+      (p("'FlClash.lock'"), "'\$appName.lock'"),
     ]),
     // lib/common/constant.dart
     (pathJoin(_current, 'lib', 'common', 'constant.dart'), [
-      ("const appName = 'FlClash'", "const appName = '$appName'"),
-      ("'/tmp/FlClashSocket_", "'/tmp/${appName}Socket_"),
-      ("'FlClashMainIsolate'", "'${appName}MainIsolate'"),
-      ("'FlClashServiceIsolate'", "'${appName}ServiceIsolate'"),
-      ("'FlClashHelperService'", "'$helperName'"),
+      (p("const appName = 'FlClash'"), "const appName = '$appName'"),
+      (p("'/tmp/FlClashSocket_"), "'/tmp/${appName}Socket_"),
+      (p("'FlClashMainIsolate'"), "'${appName}MainIsolate'"),
+      (p("'FlClashServiceIsolate'"), "'${appName}ServiceIsolate'"),
+      (pHelper("'FlClashHelperService'"), "'$helperName'"),
+      // ⚠️ packageName 不随 app_config 更改，需与 Kotlin 源码目录结构一致
     ]),
     // services/helper/src/service/windows.rs
     (pathJoin(pathJoin(_current, 'services', 'helper', 'src', 'service'), 'windows.rs'), [
-      ('"FlClashHelperService"', '"$helperName"'),
+      (pHelper('"FlClashHelperService"'), '"$helperName"'),
     ]),
     // linux/CMakeLists.txt
     (pathJoin(_current, 'linux', 'CMakeLists.txt'), [
-      ('set(BINARY_NAME "FlClash")', 'set(BINARY_NAME "$appName"'),
-      ('FlClashCore"', '$coreName"'),
+      (p('set(BINARY_NAME "FlClash")'), 'set(BINARY_NAME "$appName"'),
+      (pCore('FlClashCore"'), '$coreName"'),
+      ('set(BINARY_NAME "$oldAppName"', 'set(BINARY_NAME "$appName"'),
     ]),
     // linux/runner/my_application.cc
     (pathJoin(_current, 'linux', 'runner', 'my_application.cc'), [
-      ('gtk_header_bar_set_title(header_bar, "FlClash")',
+      (p('gtk_header_bar_set_title(header_bar, "FlClash")'),
        'gtk_header_bar_set_title(header_bar, "$appName")'),
-      ('gtk_window_set_title(window, "FlClash")',
+      (p('gtk_window_set_title(window, "FlClash")'),
        'gtk_window_set_title(window, "$appName")'),
     ]),
     // macos/Runner/Info.plist
     (pathJoin(_current, 'macos', 'Runner', 'Info.plist'), [
-      ('<key>CFBundleExecutable</key>\n\t<string>FlClash</string>',
+      (p('<key>CFBundleExecutable</key>\n\t<string>FlClash</string>'),
        '<key>CFBundleExecutable</key>\n\t<string>$appName</string>'),
-      ('<key>CFBundleName</key>\n\t<string>FlClash</string>',
+      (p('<key>CFBundleName</key>\n\t<string>FlClash</string>'),
        '<key>CFBundleName</key>\n\t<string>$appName</string>'),
     ]),
     // lib/common/window.dart
     (pathJoin(_current, 'lib', 'common', 'window.dart'), [
-      ("protocol.register('flclash')", "protocol.register('${appName.toLowerCase()}')"),
+      (p("protocol.register('flclash')"), "protocol.register('${appName.toLowerCase()}')"),
+      ("protocol.register('$oldAppNameLower')", "protocol.register('${appName.toLowerCase()}')"),
     ]),
     // core/tun/tun.go
     (pathJoin(_current, 'core', 'tun', 'tun.go'), [
-      ('Device:              "FlClash"', 'Device:              "$appName"'),
+      (p('Device:              "FlClash"'), 'Device:              "$appName"'),
     ]),
     // android/app/build.gradle.kts
     (pathJoin(_current, 'android', 'app', 'build.gradle.kts'), [
+      // ⚠️ 只改 applicationId，namespace 必须与源码目录结构一致
       ('applicationId = "com.follow.clash"', 'applicationId = "$_packageName"'),
+      ('applicationId = "$oldPackageName"', 'applicationId = "$_packageName"'),
     ]),
     // android/app/src/main/AndroidManifest.xml
     (pathJoin(pathJoin(_current, 'android', 'app', 'src', 'main'), 'AndroidManifest.xml'), [
-      ('android:label="FlClash"', 'android:label="$appName"'),
+      (p('android:label="FlClash"'), 'android:label="$appName"'),
     ]),
     // android/app/src/debug/AndroidManifest.xml
     (pathJoin(pathJoin(_current, 'android', 'app', 'src', 'debug'), 'AndroidManifest.xml'), [
-      ('android:label="FlClash Debug"', 'android:label="$appName Debug"'),
+      (p('android:label="FlClash Debug"'), 'android:label="$appName Debug"'),
     ]),
     // android/common/src/main/java/.../GlobalState.kt
     (pathJoin(pathJoin(pathJoin(_current, 'android', 'common', 'src', 'main'), 'java', 'com', 'follow', 'clash'), 'common', 'GlobalState.kt'), [
-      ('NOTIFICATION_CHANNEL = "FlClash"', 'NOTIFICATION_CHANNEL = "$appName"'),
+      (p('NOTIFICATION_CHANNEL = "FlClash"'), 'NOTIFICATION_CHANNEL = "$appName"'),
     ]),
     // android/service/src/main/java/.../VpnService.kt
     (pathJoin(pathJoin(pathJoin(_current, 'android', 'service', 'src', 'main'), 'java', 'com', 'follow', 'clash'), 'service', 'VpnService.kt'), [
-      ('setSession("FlClash")', 'setSession("$appName")'),
+      (p('setSession("FlClash")'), 'setSession("$appName")'),
     ]),
     // android/service/src/main/java/.../NotificationModule.kt
     (pathJoin(pathJoin(pathJoin(_current, 'android', 'service', 'src', 'main'), 'java', 'com', 'follow', 'clash'), 'service', 'modules', 'NotificationModule.kt'), [
-      ('setContentTitle("FlClash")', 'setContentTitle("$appName")'),
+      (p('setContentTitle("FlClash")'), 'setContentTitle("$appName")'),
     ]),
     // android/service/src/main/java/.../NotificationParams.kt
     (pathJoin(pathJoin(pathJoin(_current, 'android', 'service', 'src', 'main'), 'java', 'com', 'follow', 'clash'), 'service', 'models', 'NotificationParams.kt'), [
-      ('val title: String = "FlClash"', 'val title: String = "$appName"'),
+      (p('val title: String = "FlClash"'), 'val title: String = "$appName"'),
     ]),
   ];
 
@@ -646,6 +720,21 @@ class BuildCommand {
       throw 'Android requires --arch parameter: arm64, arm, or amd64';
     }
 
+    // 清理 CMake 缓存和 jniLibs，防止缓存污染导致构建失败
+    if (target == Target.android) {
+      final androidCoreDir = pathJoin(_current, 'android', 'core');
+      final dirsToClean = [
+        pathJoin(androidCoreDir, '.cxx'),
+        pathJoin(androidCoreDir, 'src', 'main', 'jniLibs'),
+      ];
+      for (final dir in dirsToClean) {
+        final d = Directory(dir);
+        if (await d.exists()) {
+          await d.delete(recursive: true);
+        }
+      }
+    }
+
     final corePaths = await Build.buildCore(
       target: target,
       arch: arch,
@@ -693,7 +782,7 @@ class BuildCommand {
         final targetMap = {
           Arch.arm: 'arm',
           Arch.arm64: 'arm64',
-          Arch.amd64: 'x86_64',
+          Arch.amd64: 'x64',
         };
         final archTarget = arch != null ? targetMap[arch] : 'arm64';
         await Build.exec(

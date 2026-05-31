@@ -2,6 +2,7 @@ import 'package:fl_clash/controller.dart';
 import 'package:fl_clash/services/api_client.dart';
 import 'package:fl_clash/services/auth_service.dart';
 import 'package:fl_clash/services/shop_service.dart';
+import 'package:fl_clash/views/orders.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -52,9 +53,41 @@ class _WalletViewState extends State<WalletView> {
       if (mounted) {
         final tradeNo = result['trade_no'] as String? ?? '';
         if (tradeNo.isNotEmpty) {
-          Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => _PaymentRedirect(tradeNo: tradeNo),
-          ));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('充值订单已创建: $tradeNo'),
+              duration: const Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          // 获取订单详情后直接跳转到支付页面
+          final detail = await shopService.getOrderDetail(tradeNo);
+          if (mounted && detail.isNotEmpty) {
+            final orderItem = OrderItem(
+              tradeNo: tradeNo,
+              planId: 0,
+              totalAmount: (detail['total_amount'] as num?)?.toDouble() ?? 0,
+              status: detail['status'] as int? ?? 0,
+              period: detail['period'] as String?,
+              createdAt: detail['created_at'] as int? ?? 0,
+            );
+            if (mounted) {
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => OrderDetailPage(
+                  order: orderItem,
+                  formatTime: (ts) {
+                    if (ts <= 0) return '';
+                    final dt = DateTime.fromMillisecondsSinceEpoch(ts * 1000);
+                    return '${dt.year}/${dt.month.toString().padLeft(2, '0')}/${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+                  },
+                ),
+              ));
+            }
+          } else {
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => const OrdersView(),
+            ));
+          }
         } else {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('充值订单创建成功')));
         }
@@ -248,17 +281,16 @@ class _WalletViewState extends State<WalletView> {
               const SizedBox(height: 14),
               SizedBox(
                 width: double.infinity,
-                child: FilledButton.icon(
+                child: FilledButton(
                   onPressed: _isLoading ? null : _deposit,
-                  icon: _isLoading
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.shopping_cart_rounded, size: 18),
-                  label: Text(_isLoading ? '' : '立即充值', style: TextStyle(fontSize: 15)),
                   style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(44),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     backgroundColor: cs.error,
                   ),
+                  child: _isLoading
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text('立即充值', style: TextStyle(fontSize: 15)),
                 ),
               ),
             ]),
@@ -319,6 +351,7 @@ class _DepositPaymentPage extends StatefulWidget {
 class _DepositPaymentPageState extends State<_DepositPaymentPage> {
   List<PaymentMethod> _methods = [];
   bool _isLoading = true;
+  bool _loadError = false;
   bool _isPaying = false;
 
   @override
@@ -328,7 +361,7 @@ class _DepositPaymentPageState extends State<_DepositPaymentPage> {
     try {
       final m = await shopService.getPaymentMethods();
       if (mounted) setState(() { _methods = m; _isLoading = false; });
-    } catch (_) { if (mounted) setState(() => _isLoading = false); }
+    } catch (_) { if (mounted) setState(() { _isLoading = false; _loadError = true; }); }
   }
 
   Future<void> _pay(String methodId) async {
@@ -355,7 +388,27 @@ class _DepositPaymentPageState extends State<_DepositPaymentPage> {
       appBar: AppBar(title: const Text('支付')),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _methods.isEmpty
+          : _loadError
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.cloud_off_rounded, size: 48, color: cs.error.withValues(alpha: 0.7)),
+                      const SizedBox(height: 12),
+                      Text('加载失败', style: TextStyle(color: cs.onSurfaceVariant)),
+                      const SizedBox(height: 16),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          setState(() { _isLoading = true; _loadError = false; });
+                          _loadMethods();
+                        },
+                        icon: const Icon(Icons.refresh, size: 16),
+                        label: const Text('重试'),
+                      ),
+                    ],
+                  ),
+                )
+              : _methods.isEmpty
               ? const Center(child: Text('暂无可用的支付方式'))
               : ListView(
                   padding: const EdgeInsets.all(16),

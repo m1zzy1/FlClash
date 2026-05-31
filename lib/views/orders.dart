@@ -343,6 +343,7 @@ class OrderDetailPage extends StatefulWidget {
 class OrderDetailPageState extends State<OrderDetailPage> {
   List<PaymentMethod> _methods = [];
   bool _methodsLoading = true;
+  bool _methodsError = false;
   bool _isPaying = false;
   bool _isPolling = false;
   bool _pollCancelled = false;
@@ -383,7 +384,7 @@ class OrderDetailPageState extends State<OrderDetailPage> {
           }
         });
       }
-    } catch (_) { if (mounted) setState(() => _methodsLoading = false); }
+    } catch (_) { if (mounted) setState(() { _methodsLoading = false; _methodsError = true; }); }
   }
 
   Future<void> _cancelOrder() async {
@@ -723,6 +724,32 @@ class OrderDetailPageState extends State<OrderDetailPage> {
           const SizedBox(height: 10),
           if (_methodsLoading)
             const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
+          else if (_methodsError)
+            Card(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: cs.error.withValues(alpha: 0.3)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    Icon(Icons.cloud_off_rounded, size: 32, color: cs.error.withValues(alpha: 0.7)),
+                    const SizedBox(height: 8),
+                    Text('加载失败', style: TextStyle(color: cs.onSurfaceVariant)),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        setState(() { _methodsLoading = true; _methodsError = false; });
+                        _loadMethods();
+                      },
+                      icon: const Icon(Icons.refresh, size: 16),
+                      label: const Text('重试'),
+                    ),
+                  ],
+                ),
+              ),
+            )
           else if (_methods.isEmpty)
             Card(
               shape: RoundedRectangleBorder(

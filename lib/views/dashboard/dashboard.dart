@@ -5,8 +5,10 @@ import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/controller.dart';
 import 'package:fl_clash/enum/enum.dart';
 import 'package:fl_clash/providers/providers.dart';
+import 'package:fl_clash/services/shop_service.dart';
 import 'package:fl_clash/state.dart';
 import 'package:fl_clash/widgets/widgets.dart';
+import 'package:fl_clash/views/shop.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -25,6 +27,73 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
   final key = GlobalKey<SuperGridState>();
   final _isEditNotifier = ValueNotifier<bool>(false);
   final _addedWidgetsNotifier = ValueNotifier<List<GridItem>>([]);
+  static bool _noticesChecked = false;
+  static final Set<String> _shownNoticeTitles = {};
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkPopupNotice();
+    });
+  }
+
+  Future<void> _checkPopupNotice() async {
+    if (_noticesChecked) return;
+    _noticesChecked = true;
+    final notices = await shopService.fetchNotices();
+    if (!mounted) return;
+    for (final notice in notices) {
+      if (notice.tags.any((t) => t.contains('弹窗')) &&
+          !_shownNoticeTitles.contains(notice.title)) {
+        _shownNoticeTitles.add(notice.title);
+        _showNoticeDetail(notice);
+        break;
+      }
+    }
+  }
+
+  void _showNoticeDetail(NoticeItem notice) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(children: [
+          const Icon(Icons.notifications_active, size: 20),
+          const SizedBox(width: 8),
+          Expanded(child: Text(notice.title, style: const TextStyle(fontSize: 16))),
+        ]),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (notice.imgUrl != null && notice.imgUrl!.isNotEmpty) ...[                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: Image.network(
+                      notice.imgUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                      loadingBuilder: (_, child, loadingProgress) =>
+                          loadingProgress == null
+                              ? child
+                              : const Center(child: CircularProgressIndicator()),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              Text(notice.content, style: const TextStyle(fontSize: 14, height: 1.6)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
+        ],
+      ),
+    );
+  }
 
   @override
   dispose() {
@@ -160,18 +229,14 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
             icon: Icon(Icons.add_circle),
           ),
         ),
-      FadeRotationScaleBox(
-        child: isEdit
-            ? IconButton(
-                key: ValueKey(true),
-                icon: Icon(Icons.save, key: ValueKey('save-icon')),
-                onPressed: _handleUpdateIsEdit,
-              )
-            : IconButton(
-                key: ValueKey(false),
-                icon: Icon(Icons.edit, key: ValueKey('edit-icon')),
-                onPressed: _handleUpdateIsEdit,
-              ),
+      IconButton(
+        icon: const Icon(Icons.notifications_outlined),
+        tooltip: '系统公告',
+        onPressed: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const NoticesPage()),
+          );
+        },
       ),
     ];
   }

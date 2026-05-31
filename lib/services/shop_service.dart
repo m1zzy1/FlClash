@@ -175,6 +175,17 @@ class ShopService {
     }
   }
 
+  /// 获取公告列表
+  Future<List<NoticeItem>> fetchNotices() async {
+    try {
+      final res = await apiClient.get('/user/notice/fetch');
+      final list = res['data'] as List<dynamic>? ?? [];
+      return list.map((e) => NoticeItem.fromJson(e as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
   /// 获取邀请数据
   Future<Map<String, dynamic>> fetchInviteData() async {
     final res = await apiClient.get('/user/invite/fetch');
@@ -337,7 +348,7 @@ class Plan {
         }
       }
     } else if (desc is String) {
-      contentList = _parseJsonDescription(desc).map((e) => ContentItem(text: e)).toList();
+      contentList = _parseJsonDescription(desc);
     }
 
     return Plan(
@@ -369,20 +380,21 @@ class Plan {
     return 0;
   }
 
-  static List<String> _parseJsonDescription(String text) {
+  static List<ContentItem> _parseJsonDescription(String text) {
     final trimmed = text.trim();
     // JSON array of feature objects  [{"feature":"...","support":true}, ...]
     if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
       try {
         final list = const JsonDecoder().convert(trimmed);
         if (list is List) {
-          final result = <String>[];
+          final result = <ContentItem>[];
           for (final item in list) {
             if (item is Map) {
-              final f = item['feature'] ?? item['name'] ?? item['text'] ?? item.toString();
-              result.add(_stripHtml(f.toString()));
+              final feature = item['feature'] ?? item['name'] ?? item['text'] ?? item.toString();
+              final support = item['support'] != false;
+              result.add(ContentItem(text: _stripHtml(feature.toString()), support: support));
             } else {
-              result.add(_stripHtml(item.toString()));
+              result.add(ContentItem(text: _stripHtml(item.toString())));
             }
           }
           if (result.isNotEmpty) return result;
@@ -394,14 +406,24 @@ class Plan {
       try {
         final decoded = const JsonDecoder().convert(trimmed);
         if (decoded is Map) {
-          final result = <String>[];
+          final result = <ContentItem>[];
           for (final val in decoded.values) {
             if (val is String && val.isNotEmpty) {
-              result.add(_stripHtml(val));
+              result.add(ContentItem(text: _stripHtml(val)));
             } else if (val is List) {
-              result.addAll(val.map((e) => _stripHtml(e.toString())));
+              for (final e in val) {
+                if (e is Map) {
+                  final feature = e['feature'] ?? e['name'] ?? e.toString();
+                  final support = e['support'] != false;
+                  result.add(ContentItem(text: _stripHtml(feature.toString()), support: support));
+                } else {
+                  result.add(ContentItem(text: _stripHtml(e.toString())));
+                }
+              }
             } else if (val is Map) {
-              result.add(_stripHtml((val['feature'] ?? val['name'] ?? '').toString()));
+              final feature = val['feature'] ?? val['name'] ?? '';
+              final support = val['support'] != false;
+              result.add(ContentItem(text: _stripHtml(feature.toString()), support: support));
             }
           }
           if (result.isNotEmpty) return result;
@@ -415,10 +437,11 @@ class Plan {
           .split('\n')
           .map((e) => e.trim())
           .where((e) => e.isNotEmpty)
+          .map((e) => ContentItem(text: e))
           .toList();
     }
-    if (stripped.isNotEmpty) return [stripped];
-    return [text];
+    if (stripped.isNotEmpty) return [ContentItem(text: stripped)];
+    return [];
   }
 
   /// 去除 HTML 标签并解码常见实体
@@ -494,6 +517,48 @@ class PaymentCheckout {
   final String data;
 
   PaymentCheckout({required this.type, required this.data});
+}
+
+class NoticeItem {
+  final String title;
+  final String content;
+  final String? imgUrl;
+  final int createdAt;
+  final int updatedAt;
+  final List<String> tags;
+
+  /// 优先显示更新时间，没有则用创建时间
+  int get displayTime => updatedAt > 0 ? updatedAt : createdAt;
+
+  NoticeItem({
+    required this.title,
+    required this.content,
+    this.imgUrl,
+    this.createdAt = 0,
+    this.updatedAt = 0,
+    this.tags = const [],
+  });
+
+  factory NoticeItem.fromJson(Map<String, dynamic> json) {
+    // tags 可能是逗号分隔字符串或 JSON 数组
+    List<String> tags = [];
+    final tagsRaw = json['tags'];
+    if (tagsRaw is String) {
+      tags = tagsRaw.isNotEmpty
+          ? tagsRaw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList()
+          : [];
+    } else if (tagsRaw is List) {
+      tags = tagsRaw.map((e) => e.toString()).toList();
+    }
+    return NoticeItem(
+      title: json['title'] as String? ?? '',
+      content: json['content'] as String? ?? '',
+      imgUrl: json['img_url'] as String?,
+      createdAt: json['created_at'] as int? ?? 0,
+      updatedAt: json['updated_at'] as int? ?? 0,
+      tags: tags,
+    );
+  }
 }
 
 class OrderItem {

@@ -8,7 +8,7 @@ import kotlinx.coroutines.Dispatchers
 
 object GlobalState : CoroutineScope by CoroutineScope(Dispatchers.Default) {
 
-    const val NOTIFICATION_CHANNEL = "Sororain"
+    const val NOTIFICATION_CHANNEL = "Koipy"
 
     const val NOTIFICATION_ID = 1
 

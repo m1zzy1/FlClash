@@ -5,7 +5,7 @@ import kotlinx.parcelize.Parcelize
 
 @Parcelize
 data class NotificationParams(
-    val title: String = "Sororain",
+    val title: String = "Koipy",
     val stopText: String = "STOP",
     val onlyStatisticsProxy: Boolean = false,
 ) : Parcelable

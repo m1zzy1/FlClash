@@ -438,32 +438,38 @@ class _ProfileViewState extends State<ProfileView> {
                 ),
                 const SizedBox(height: 14),
 
-                // ── 快捷操作 ──
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  children: [
-                    _actionChip(cs, Icons.sync_rounded, '同步订阅', _syncSubscription),
-                    _actionChip(cs, Icons.refresh_rounded, '重置流量', () => _handleResetTraffic(),
-                        fg: isTrafficDepleted ? cs.error : Colors.orange.shade600),
-                  ],
-                ),
+                // ── 快捷操作移到页面底部 ──
               ],
             ),
           ),
         ),
         const SizedBox(height: 8),
 
-        // ── 功能菜单 ──
-        _menuItem(cs, Icons.account_balance_wallet_outlined, '我的钱包', '为账户余额充值', () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WalletView()))),
-        Divider(height: 1, indent: 50, color: cs.outlineVariant.withValues(alpha: 0.3)),
-        _menuItem(cs, Icons.person_add_outlined, '我的邀请', '邀请朋友获取奖励', () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const InviteView()))),
-        const Divider(height: 1, indent: 50, color: Color(0x4D8E8E93)),
-        _menuItem(cs, Icons.construction_outlined, '高级工具', '网络诊断与高级设置', () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ToolsView()))),
-        const Divider(height: 1, indent: 50, color: Color(0x4D8E8E93)),
-        _menuItem(cs, Icons.system_update_outlined, '检查更新', '检查新版本', _handleCheckUpdate),
-        const Divider(height: 1, indent: 50, color: Color(0x4D8E8E93)),
-        _menuItem(cs, Icons.logout, '退出登录', '切换账户', _handleLogout, danger: true),
+        // ── 全部菜单项 ──
+        Card(
+          margin: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          elevation: 0,
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              _menuItem(cs, Icons.refresh_rounded, '重置流量', '重置已用流量', () => _handleResetTraffic(),
+                  fg: isTrafficDepleted ? cs.error : Colors.orange.shade600),
+              Divider(height: 1, indent: 50, color: cs.outlineVariant.withValues(alpha: 0.3)),
+              _menuItem(cs, Icons.sync_rounded, '同步订阅', '手动同步订阅信息', _syncSubscription),
+              Divider(height: 1, indent: 50, color: cs.outlineVariant.withValues(alpha: 0.3)),
+              _menuItem(cs, Icons.account_balance_wallet_outlined, '我的钱包', '为账户余额充值', () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WalletView()))),
+              Divider(height: 1, indent: 50, color: cs.outlineVariant.withValues(alpha: 0.3)),
+              _menuItem(cs, Icons.person_add_outlined, '我的邀请', '邀请朋友获取奖励', () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const InviteView()))),
+              Divider(height: 1, indent: 50, color: cs.outlineVariant.withValues(alpha: 0.3)),
+              _menuItem(cs, Icons.construction_outlined, '高级工具', '网络诊断与高级设置', () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ToolsView()))),
+              Divider(height: 1, indent: 50, color: cs.outlineVariant.withValues(alpha: 0.3)),
+              _menuItem(cs, Icons.system_update_outlined, '检查更新', '检查新版本', _handleCheckUpdate),
+              Divider(height: 1, indent: 50, color: cs.outlineVariant.withValues(alpha: 0.3)),
+              _menuItem(cs, Icons.logout, '退出登录', '切换账户', _handleLogout, danger: true),
+            ],
+          ),
+        ),
         const SizedBox(height: 24),
       ],
     ),

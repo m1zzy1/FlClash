@@ -204,7 +204,7 @@ class VpnService : SystemVpnService(), IBaseService,
                     }
                 }
             }
-            setSession("Sororain")
+            setSession("Koipy")
             setBlocking(false)
             if (Build.VERSION.SDK_INT >= 29) {
                 setMetered(false)

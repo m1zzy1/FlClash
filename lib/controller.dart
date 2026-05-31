@@ -128,7 +128,7 @@ extension InitControllerExt on AppController {
       if (res == true) {
         final downloadUrl = data['download_url'] as String?;
         if (downloadUrl != null && downloadUrl.isNotEmpty) {
-          launchUrl(Uri.parse(downloadUrl));
+          launchUrl(Uri.parse(downloadUrl), mode: LaunchMode.externalApplication);
         } else {
           launchUrl(Uri.parse('https://github.com/$repository/releases/latest'));
         }

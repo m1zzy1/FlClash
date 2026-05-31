@@ -35,7 +35,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.sororain.clash"
+        applicationId = "com.koipy.clash"
         minSdk = flutter.minSdkVersion
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = flutter.versionCode
